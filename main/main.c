@@ -6,7 +6,7 @@
 #include "motion_planner.h"
 #include "esp_random.h"
 #include "esp_log.h"
-#include "satellite.h"
+#include "coordinator_common.h"
 
 #define M1_STEP GPIO_NUM_15
 #define M1_DIR GPIO_NUM_2

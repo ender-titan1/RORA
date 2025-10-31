@@ -9,10 +9,5 @@ typedef struct __attribute__((packed)) {
     uint8_t crc;
 } sat_command_t;
 
-typedef struct {
-    uint8_t *mac;
-} satellite_t;
-
-void wifi_init();
-void satellite_connect(satellite_t *sat);
-void sat_transmit_command(satellite_t *sat, sat_command_t *cmd);
+void core_init();
+void sat_transmit_command(uint8_t *mac, sat_command_t *cmd);
