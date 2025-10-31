@@ -3,7 +3,6 @@
 #include "coordinator_common.h"
 #include "esp_err.h"
 
-
 void wifi_init()
 {
     ESP_ERROR_CHECK(nvs_flash_init());
@@ -16,6 +15,12 @@ void wifi_init()
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_ERROR_CHECK(esp_now_init());
+
+#if CONFIG_DEVICE_ROLE_CORE
+    core_init();
+#elif CONFIG_DEVICE_ROLE_SAT
+    sat_init();
+#endif
 }
 
 void connect(uint8_t *mac)
