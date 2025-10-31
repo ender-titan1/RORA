@@ -1,0 +1,15 @@
+menu "Satellite Configuration"
+
+    choice DEVICE_ROLE
+        prompt "Device role"
+        default DEVICE_ROLE_CORE
+        help
+            Device role (core or satellite).
+        
+        config DEVICE_ROLE_CORE
+            bool "Core"
+        config DEVICE_ROLE_SAT
+            bool "Satellite"
+    endchoice
+    
+endmenu
