@@ -26,6 +26,9 @@ static uint8_t sat_mac[6] = { 0xEC, 0xE3, 0x34, 0x17, 0xD0, 0xC8 };
 #if CONFIG_DEVICE_ROLE_SAT
 volatile mp_movement_curve_t sat_curve = {0};
 volatile mp_joint_command_t sat_cmd = {0};
+volatile drv8825_command_t sat_drv8825_cmd = {0};
+drv8825_t base_motor_nema17 = {0};
+mp_joint_t base = {0};
 #endif
 
 void connect_to_peer()
@@ -84,8 +87,41 @@ void core_main()
         .payload = {0},
     };
     memcpy(curve_cmd.payload, (uint8_t*)&cfg_payload, sizeof(cfg_payload));
-    sat_transmit_command(sat_mac, &curve_cmd);
+    transmit_frame(sat_mac, &curve_cmd);
 
+    // Crete movement command on the core
+    mp_joint_command_t jc = {
+        .joint = &shoulder,
+        .profile = &curve,
+        .degrees = 90,
+        .direction = CW,
+        .duration_s = 1,
+    };
+    drv8825_command_t motor_cmd = {0};
+    create_drv8825_command(&jc, &motor_cmd);
+
+    // Create movement command on the satellite
+    mp_joint_command_payload_t jcp = {
+        .degrees = 180,
+        .dir = CCW,
+    };
+    data_frame_t compute_cmd = {
+        .command = CMD_MP_COMPUTE,
+        .payload = {0},
+    };
+    memcpy(compute_cmd.payload, (uint8_t*)&jcp, sizeof(jcp));
+    transmit_frame(sat_mac, &compute_cmd);
+
+    // Execute
+    data_frame_t execute_cmd = {
+        .command = CMD_EXECUTE,
+        .payload = {0},
+    };
+    transmit_frame(sat_mac, &execute_cmd);
+    execute(&motor_cmd);
+
+    detach_motor(&shoulder_motor_nema23);
+    delete_drv8825_command(&motor_cmd);
     delete_eased_movement_curve(&curve);
 }
 
@@ -93,7 +129,7 @@ void core_main()
 
 void sat_cmd_curve(data_frame_t *cmd, uint8_t len)
 {
-    ESP_LOGI("SAT", "Curve command received");
+    ESP_LOGI("SAT", "MP Curve command received");
 
     mp_movement_curve_config_payload_t payload;
     memcpy(&payload, cmd->payload, sizeof(payload));
@@ -125,26 +161,53 @@ void sat_cmd_curve(data_frame_t *cmd, uint8_t len)
     create_eased_movement_curve(&cfg, &sat_curve);
 }
 
-void sat_main()
+void sat_cmd_compute(data_frame_t *cmd, uint8_t len)
 {
-    drv8825_t base_motor_nema17 = {
-        .pinSTEP = GPIO_NUM_18,
-        .pinDIR = GPIO_NUM_5,
-        .pinEN = GPIO_NUM_23,
-        .stepsPerRotation = 200 * 32,
-        .channelRMT = NULL,
-        .encoderRMT = NULL,
+    ESP_LOGI("SAT", "MP Compute command received");
+
+    mp_joint_command_payload_t payload;
+    memcpy(&payload, cmd->payload, sizeof(payload));
+
+    mp_joint_command_t mp_cmd = {
+        .joint = &base,
+        .profile = &sat_curve,
+        .duration_s = sat_curve.cfg->duration_s,
+        .degrees = payload.degrees,
+        .direction = payload.dir,
     };
 
-    mp_joint_t base = {
-        .motor = &base_motor_nema17,
-        .pinion_teeth = 25,
-        .output_teeth = 125,
+    create_drv8825_command(&mp_cmd, &sat_drv8825_cmd);
+}
+
+void sat_cmd_exec(data_frame_t *cmd, uint8_t len)
+{
+    ESP_LOGI("SAT", "Execute command received");
+    execute(&sat_drv8825_cmd);
+
+    data_frame_t ack = {
+        .command = ACK,
+        .payload = {0}
     };
+
+    transmit_frame(core_mac, &ack);
+}
+
+void sat_main()
+{
+    base_motor_nema17.pinSTEP = GPIO_NUM_18,
+    base_motor_nema17.pinDIR = GPIO_NUM_5,
+    base_motor_nema17.pinEN = GPIO_NUM_23,
+    base_motor_nema17.stepsPerRotation = 200 * 32,
+    base_motor_nema17.channelRMT = NULL,
+    base_motor_nema17.encoderRMT = NULL,
+
+    base.motor = &base_motor_nema17,
+    base.pinion_teeth = 25,
+    base.output_teeth = 125,
 
     attach_motor(&base_motor_nema17);
 
-    bind_cmd_callbacks(sat_cmd_curve, NULL, NULL, NULL);
+    bind_cmd_callbacks(sat_cmd_curve, sat_cmd_compute, sat_cmd_exec, NULL);
 }
 
 #endif

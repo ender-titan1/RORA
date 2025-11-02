@@ -52,8 +52,7 @@ static void sat_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
         .payload = {0}
     };
 
-    ack.crc = crc8_gen((uint8_t*)&ack, sizeof(data_frame_t) - 1);
-    esp_now_send(recv_info->src_addr, (uint8_t*)&ack, sizeof(ack));
+    transmit_frame(recv_info->src_addr, &ack);
 }
 
 void sat_init()

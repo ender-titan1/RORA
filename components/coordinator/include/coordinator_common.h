@@ -40,5 +40,6 @@ typedef struct __attribute__((packed)) {
 
 void wifi_init();
 void connect(uint8_t *mac);
+void transmit_frame(uint8_t *mac, data_frame_t *frame);
 uint8_t crc8_gen(const uint8_t *data, uint8_t len);
 

@@ -5,5 +5,4 @@
 #define HANDSHAKE_TIME_BETWEEN_RETRY 100
 
 void core_init();
-void sat_transmit_command(uint8_t *mac, data_frame_t *cmd);
 bool sat_handshake(uint8_t *mac);

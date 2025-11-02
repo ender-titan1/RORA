@@ -25,6 +25,13 @@ static void core_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t 
         return;
     }
 
+    if (frame->command == NACK)
+    {
+        ESP_LOGI(TAG, "NACK received, waiting for ACK");
+        ack_received = false;
+        return;
+    }
+
     ESP_LOGW(TAG, "Data received, but no meaningful payload found!");
     ack_received = false;
     return;
@@ -34,12 +41,6 @@ void core_init()
 {
     esp_now_register_recv_cb(core_on_recv_cb);
     ESP_LOGI(TAG, "Initialized device as CORE");
-}
-
-void sat_transmit_command(uint8_t *mac, data_frame_t *cmd)
-{
-    cmd->crc = crc8_gen((uint8_t*)cmd, sizeof(data_frame_t) - 1);
-    esp_now_send(mac, (uint8_t*)cmd, sizeof(data_frame_t));
 }
 
 bool sat_handshake(uint8_t *mac)
@@ -53,7 +54,7 @@ bool sat_handshake(uint8_t *mac)
 
     while (xTaskGetTickCount() - start_ticks < pdMS_TO_TICKS(HANDSHAKE_TIMEOUT_MS)) 
     {
-        sat_transmit_command(mac, &handshake_cmd);
+        transmit_frame(mac, &handshake_cmd);
 
         ESP_LOGI(TAG, "Handshake sent...");
 
