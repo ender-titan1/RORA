@@ -1,13 +1,9 @@
 #pragma once
-#include "esp_wifi.h"
-#include "esp_now.h"
-#include "nvs_flash.h"
+#include "coordinator_common.h"
 
-typedef struct __attribute__((packed)) {
-    uint8_t command;
-    uint8_t payload[32];
-    uint8_t crc;
-} sat_command_t;
+#define HANDSHAKE_TIMEOUT_MS 1000
+#define HANDSHAKE_TIME_BETWEEN_RETRY 100
 
 void core_init();
-void sat_transmit_command(uint8_t *mac, sat_command_t *cmd);
+void sat_transmit_command(uint8_t *mac, data_frame_t *cmd);
+bool sat_handshake(uint8_t *mac);

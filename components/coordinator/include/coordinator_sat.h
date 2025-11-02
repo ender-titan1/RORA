@@ -1,6 +1,7 @@
 #pragma once
-#include "esp_wifi.h"
-#include "esp_now.h"
-#include "nvs_flash.h"
+#include "coordinator_common.h"
+
+typedef void (*sat_callback_func)(data_frame_t *cmd, uint8_t len);
 
 void sat_init();
+void bind_cmd_callbacks(sat_callback_func curve_cb, sat_callback_func compute_cb, sat_callback_func exec_cb, sat_callback_func cleanup_cb);

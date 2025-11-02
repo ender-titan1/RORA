@@ -3,4 +3,5 @@ idf_component_register(
 
     INCLUDE_DIRS "include"
     REQUIRES esp_wifi nvs_flash
+    REQUIRES "drv8825"
 )

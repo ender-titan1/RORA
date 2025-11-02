@@ -1,11 +1,33 @@
 #include "coordinator_core.h"
 #include "esp_log.h"
 
-const uint8_t *TAG = "Coordinator Core";
+const char *TAG = "Coordinator Core";
+
+volatile bool ack_received = false;
 
 static void core_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
+    data_frame_t *frame = (data_frame_t*)data;
+    uint8_t generated_crc = crc8_gen(data, len - 1);
+    uint8_t original_crc = frame->crc;
 
+    if (generated_crc != original_crc)
+    {
+        ESP_LOGW(TAG, "Data received, CRC8 invalid (expected %02X, got %02X)", original_crc, generated_crc);
+        ack_received = false;
+        return;
+    }
+
+    if (frame->command == ACK)
+    {
+        ESP_LOGI(TAG, "ACK received");
+        ack_received = true;
+        return;
+    }
+
+    ESP_LOGW(TAG, "Data received, but no meaningful payload found!");
+    ack_received = false;
+    return;
 }
 
 void core_init()
@@ -14,7 +36,36 @@ void core_init()
     ESP_LOGI(TAG, "Initialized device as CORE");
 }
 
-void sat_transmit_command(uint8_t *mac, sat_command_t *cmd)
+void sat_transmit_command(uint8_t *mac, data_frame_t *cmd)
 {
-    esp_now_send(mac, (uint8_t*)cmd, sizeof(sat_command_t));
+    cmd->crc = crc8_gen((uint8_t*)cmd, sizeof(data_frame_t) - 1);
+    esp_now_send(mac, (uint8_t*)cmd, sizeof(data_frame_t));
+}
+
+bool sat_handshake(uint8_t *mac)
+{
+    ack_received = false;
+    uint32_t start_ticks = xTaskGetTickCount();
+    data_frame_t handshake_cmd = {
+        .command = CMD_HANDSHAKE,
+        .payload = {0},
+    };
+
+    while (xTaskGetTickCount() - start_ticks < pdMS_TO_TICKS(HANDSHAKE_TIMEOUT_MS)) 
+    {
+        sat_transmit_command(mac, &handshake_cmd);
+
+        ESP_LOGI(TAG, "Handshake sent...");
+
+        vTaskDelay(pdMS_TO_TICKS(HANDSHAKE_TIME_BETWEEN_RETRY));
+
+        if (ack_received)
+            return true;
+
+        ESP_LOGW(TAG, "Hanshake failed! Retrying...");
+    }
+
+    ESP_LOGE(TAG, "Satellite unreachable!");
+
+    return false;
 }

@@ -3,6 +3,13 @@
 #include "coordinator_common.h"
 #include "esp_err.h"
 
+#if CONFIG_DEVICE_ROLE_CORE
+    #include "coordinator_core.h"
+#elif CONFIG_DEVICE_ROLE_SAT
+    #include "coordinator_sat.h"
+#endif
+
+
 void wifi_init()
 {
     ESP_ERROR_CHECK(nvs_flash_init());
@@ -25,10 +32,26 @@ void wifi_init()
 
 void connect(uint8_t *mac)
 {
-    esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
-    peer->channel = 0;
-    peer->encrypt = false;
-    memcpy(peer->peer_addr, mac, 6*sizeof(uint8_t));
-    ESP_ERROR_CHECK(esp_now_add_peer(peer));
-    free(peer);
+    esp_now_peer_info_t peer = {0};
+    peer.channel = 0;
+    peer.encrypt = false;
+    memcpy(peer.peer_addr, mac, 6*sizeof(uint8_t));
+    ESP_ERROR_CHECK(esp_now_add_peer(&peer));
+}
+
+uint8_t crc8_gen(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0x00;
+    const uint8_t poly = 0x07;
+
+    for (uint8_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 0x80)
+                crc = (crc << 1) ^ poly;
+            else
+                crc <<= 1;
+        }
+    }
+    return crc;
 }
