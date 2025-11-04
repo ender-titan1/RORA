@@ -2,23 +2,59 @@
 #include <string.h>
 #include "coordinator_common.h"
 #include "esp_err.h"
+#include "esp_log.h"
 
 #if CONFIG_DEVICE_ROLE_CORE
     #include "coordinator_core.h"
+    #define WIFI_MODE WIFI_MODE_APSTA
 #elif CONFIG_DEVICE_ROLE_SAT
     #include "coordinator_sat.h"
+    #define WIFI_MODE WIFI_MODE_STA
 #endif
 
-
+// This initializes ESPNOW
+// For the core, it also starts the device in AP+STA mode to allow an access point to be created
+// This allows my PC to connect to the device
 void wifi_init()
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+#if CONFIG_DEVICE_ROLE_CORE
+    esp_netif_create_default_wifi_ap();
+    esp_netif_create_default_wifi_sta();
+#endif
+
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+
+#if CONFIG_DEVICE_ROLE_CORE
+    wifi_config_t ap_cfg = {
+        .ap = {
+            .ssid = "RORA",
+            .ssid_len = strlen("RORA"),
+            .channel = 1,
+            .password = "12345678",
+            .max_connection = 2,
+            .authmode = WIFI_AUTH_WPA_WPA2_PSK
+        }
+    };
+
+    wifi_config_t sta_cfg = {
+        .sta = {
+            .ssid = "",
+            .password = "",
+            .threshold.authmode = WIFI_AUTH_OPEN,
+        }
+    };
+#endif
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE));
+#if CONFIG_DEVICE_ROLE_CORE
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
+#endif
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_ERROR_CHECK(esp_now_init());
@@ -30,7 +66,7 @@ void wifi_init()
 #endif
 }
 
-void connect(uint8_t *mac)
+void coordinator_connect(uint8_t *mac)
 {
     esp_now_peer_info_t peer = {0};
     peer.channel = 0;
@@ -41,6 +77,7 @@ void connect(uint8_t *mac)
 
 void transmit_frame(uint8_t *mac, data_frame_t *cmd)
 {
+    ESP_LOGI("coordinator", "Sending cmd %02X", cmd->command);
     cmd->crc = crc8_gen((uint8_t*)cmd, sizeof(data_frame_t) - 1);
     esp_now_send(mac, (uint8_t*)cmd, sizeof(data_frame_t));
 }

@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c"
+    SRCS "satellite.c" "core.c" "main.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES drv8825
     PRIV_REQUIRES motion_planner

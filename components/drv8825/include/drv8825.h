@@ -14,6 +14,8 @@ typedef struct {
     int pinEN;
     int stepsPerRotation;
 
+    bool activeLow;
+
     rmt_channel_handle_t channelRMT;
     rmt_encoder_handle_t encoderRMT;
 } drv8825_t;
@@ -49,5 +51,6 @@ size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbol
 void attach_motor(drv8825_t *motor);
 uint16_t prepare(drv8825_command_t *command, const char* tag);
 void execute(drv8825_command_t *command);
-void execute_sync(uint8_t count, drv8825_command_t *commands);
+void execute_sync(uint8_t count, drv8825_command_t *commands, bool disable);
+void disable_motor(drv8825_t *motor);
 void detach_motor(drv8825_t *motor);

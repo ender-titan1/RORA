@@ -7,7 +7,7 @@
 
 #define MAX(a, b) (a > b ? a : b)
 
-static const char* TAG = "Motion Planner";
+static const char* TAG = "motion_planner";
 
 int compare_remainders_desc_cb(const void *a, const void *b)
 {
@@ -87,7 +87,7 @@ bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
 
     ESP_LOGI(TAG, "Total Area: %f", total_area);
 
-    if (total_area == 0)
+    if (total_area == 0.0)
     {
         ESP_LOGE(TAG, "Failed to create DRV8825 command! (STEP: %s)", cmd->joint->motor->pinSTEP);
         ESP_LOGE(TAG, "Movement curve area == 0");
@@ -194,6 +194,25 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
         cfg->resolution = 100 * EPSILON;
     }
 
+    mp_easing_func_t easing_func;
+
+    switch (cfg->ease_type)
+    {
+    case EASE_LINEAR:
+        easing_func = mp_ease_linear;
+        break;
+    case EASE_SINE:
+        easing_func = mp_ease_sine;
+        break;
+    case EASE_CUBIC:
+        easing_func = mp_ease_cubic;
+        break;
+    default:
+        ESP_LOGW(TAG, "Unknown easing type detected, falling back to sine");
+        easing_func = mp_ease_sine;
+        break;
+    }
+
     size_t max_points = (size_t)(cfg->duration_s / cfg->resolution) + 2;
     double *points = malloc(max_points * sizeof(double));
     uint16_t i = 0;
@@ -203,7 +222,7 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
     // ACCEL
     for (double t = 0.0; t < (cfg->accel_time_s + EPSILON); t += cfg->resolution)
     {
-        points[i] = cfg->easing_func(t, cfg->accel_time_s, ACCEL);
+        points[i] = easing_func(t, cfg->accel_time_s, ACCEL);
         //ESP_LOGI(TAG, "%d| %f: %f", i, t, points[i]);
         i++;
     }
@@ -224,7 +243,7 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
     // DECEL
     for (double t = 0.0; t <= (cfg->decel_time_s + EPSILON); t += cfg->resolution)
     {
-        points[i] = cfg->easing_func(t, cfg->decel_time_s, DECEL);
+        points[i] = easing_func(t, cfg->decel_time_s, DECEL);
         //ESP_LOGI(TAG, "%d| %f: %f", i, t, points[i]);
         i++;
     }

@@ -22,6 +22,7 @@
     "rmt.h": "c",
     "gpio.h": "c",
     "coordinator_core.h": "c",
-    "coordinator_sat.h": "c"
+    "coordinator_sat.h": "c",
+    "satellite.h": "c"
   }
 }

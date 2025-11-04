@@ -96,7 +96,11 @@ uint16_t prepare(drv8825_command_t *command, const char* tag)
     uint16_t steps = (uint16_t)(fraction * motor->stepsPerRotation);
 
     gpio_set_level(motor->pinDIR, (uint8_t)command->direction);
-    gpio_set_level(motor->pinEN, 1);
+
+    if (motor->activeLow)
+        gpio_set_level(motor->pinEN, 0);
+    else
+        gpio_set_level(motor->pinEN, 1);
 
     return steps;
 }
@@ -118,10 +122,9 @@ void execute(drv8825_command_t *command)
     rmt_transmit(motor->channelRMT, motor->encoderRMT, &data, sizeof(data), &c);
     rmt_tx_wait_all_done(motor->channelRMT, 10000);
 
-    gpio_set_level(motor->pinEN, 0);
 }
 
-void execute_sync(uint8_t count, drv8825_command_t *commands)
+void execute_sync(uint8_t count, drv8825_command_t *commands, bool disable)
 {
     ESP_LOGI(TAG, "SYNC EXECUTE BEGIN");
     ESP_LOGI(SYNC_TAG, "%d commands issued", count);
@@ -178,10 +181,20 @@ void execute_sync(uint8_t count, drv8825_command_t *commands)
 
     ESP_LOGI(SYNC_TAG, "Transmission completed succesfully!");
 
+    if (!disable)
+        return;
+
     // Make sure we disable the motor after the move
     for (uint8_t i = 0; i < count; i++)
     {
-        gpio_set_level(commands[i].motor->pinEN, 0);
+        disable_motor(commands[i].motor);
     }
 }
 
+void disable_motor(drv8825_t *motor)
+{
+    if (motor->activeLow)
+        gpio_set_level(motor->pinEN, 1);
+    else
+        gpio_set_level(motor->pinEN, 0);
+}

@@ -1,9 +1,8 @@
 #include "coordinator_core.h"
 #include "esp_log.h"
 
-const char *TAG = "Coordinator Core";
-
-volatile bool ack_received = false;
+static const char *TAG = "coordinator";
+static volatile bool ack_received = false;
 
 static void core_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
@@ -43,6 +42,22 @@ void core_init()
     ESP_LOGI(TAG, "Initialized device as CORE");
 }
 
+bool await_response()
+{
+    uint32_t start_ticks = xTaskGetTickCount();
+    while (!ack_received) 
+    {
+        if (xTaskGetTickCount() - start_ticks > pdMS_TO_TICKS(100))
+            break;
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    bool ack = ack_received;
+    ack_received = false;
+    return ack;
+}
+
 bool sat_handshake(uint8_t *mac)
 {
     ack_received = false;
@@ -61,12 +76,17 @@ bool sat_handshake(uint8_t *mac)
         vTaskDelay(pdMS_TO_TICKS(HANDSHAKE_TIME_BETWEEN_RETRY));
 
         if (ack_received)
+        {
+            ack_received = false;
             return true;
+        }
 
         ESP_LOGW(TAG, "Hanshake failed! Retrying...");
     }
 
     ESP_LOGE(TAG, "Satellite unreachable!");
+
+    ack_received = false;
 
     return false;
 }

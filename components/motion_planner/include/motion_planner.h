@@ -7,6 +7,12 @@ typedef enum {
     DECEL = -1,
 } mp_accel_type_t;
 
+typedef enum {
+    EASE_LINEAR = 0,
+    EASE_SINE = 1,
+    EASE_CUBIC = 2,
+} ease_type_t;
+
 typedef double (*mp_easing_func_t)(double, double, mp_accel_type_t);
 
 typedef struct {
@@ -15,8 +21,8 @@ typedef struct {
     uint16_t output_teeth;
 } mp_joint_t;
 
-typedef struct {
-    mp_easing_func_t easing_func; 
+typedef struct __attribute__((packed)) {
+    uint8_t ease_type;
     float accel_time_s;
     float decel_time_s;
     float duration_s;
@@ -33,7 +39,7 @@ typedef struct {
     mp_joint_t *joint;
     int degrees;
     float duration_s;
-    drv8825_direction direction;
+    uint8_t direction;
     mp_movement_curve_t* profile;
 } mp_joint_command_t;
 
