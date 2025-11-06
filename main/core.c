@@ -48,7 +48,7 @@ static void tcp_server_task(void *arg)
 
     while (1)
     {
-        client_sock = accept(listen_sock, (struct sockaddr *)&client_sock, &client_addr_len);
+        client_sock = accept(listen_sock, (struct sockaddr *)&client_addr, &client_addr_len);
         ESP_LOGI(TAG, "Client connected!");
 
         while (1)
@@ -59,22 +59,9 @@ static void tcp_server_task(void *arg)
                 ESP_LOGI(TAG, "Client disconnected");
                 break;
             }
-
-            for (int i = 0; i < len; i++)
-            {
-                ESP_LOGI(TAG, "%02X", rx_buffer[i]);
-            }
-
-            if (len != sizeof(pc_command_t))
-            {
-                ESP_LOGW(TAG, "Command size invalid");
-                break;
-            }
-
             
             pc_command_t cmd;
             memcpy(&cmd, rx_buffer, sizeof(pc_command_t));
-            ESP_LOGI(TAG, "%f", cmd.payload.curve_cfg.resolution);
 
             if (xQueueSend(pc_cmd_queue, &cmd, 0) != pdTRUE)
             {
@@ -119,8 +106,9 @@ static void pc_command_task(void *arg)
             // THIS CODE LEAKS - but I'm too lazy to fix that
             if (cmd.cmd == PC_CMD_CREATE_CURVE)
             {
-                mp_movement_curve_config_t cfg = cmd.payload.curve_cfg;
-                create_eased_movement_curve(&cfg, &curves[target_slot]);
+                mp_movement_curve_config_t *cfg = malloc(sizeof(mp_movement_curve_config_t));
+                memcpy(cfg, &cmd.payload.curve_cfg, sizeof(mp_movement_curve_config_t));
+                create_eased_movement_curve(cfg, &curves[target_slot]);
                 continue;
             }
 
@@ -136,8 +124,11 @@ static void pc_command_task(void *arg)
                     .degrees = cmd.payload.cmd.degrees,
                     .direction = cmd.payload.cmd.dir,
                     .duration_s = curves[src_slot].cfg->duration_s,
+                    .profile = &curves[src_slot],
                     .joint = joint
                 };
+                ESP_LOGI(TAG, "%f", curves[src_slot].cfg->duration_s);
+                ESP_LOGI(TAG, "%d", joint->motor->pinSTEP);
                 create_drv8825_command(&jc, &commands[target_slot]);
             }
 
@@ -160,6 +151,7 @@ void core_main()
     coordinator_connect(sat_mac);
 
     attach_motor(&shoulder_motor_nema23);
+    disable_motor(&shoulder_motor_nema23);
 
     sat_handshake(sat_mac);
 

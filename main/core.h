@@ -8,6 +8,10 @@
 #define M1_DIR GPIO_NUM_2
 #define M1_EN GPIO_NUM_4
 
+#define M2_EN GPIO_NUM_23
+#define M2_STEP GPIO_NUM_22
+#define M2_DIR GPIO_NUM_21
+
 typedef enum {
     // Basic commands
     PC_CMD_CREATE_CURVE = 0xF0,

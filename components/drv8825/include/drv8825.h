@@ -3,10 +3,8 @@
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 
-typedef enum {
-    CCW = 0,
-    CW = 1,
-} drv8825_direction;
+#define CCW 0
+#define CW 1
 
 typedef struct {
     int pinSTEP;
@@ -37,7 +35,7 @@ typedef struct {
     bool moving;
 
     int degrees;
-    drv8825_direction direction;
+    uint8_t direction;
     drv8825_pulse_provider_t pulse;
 } drv8825_command_t;
 

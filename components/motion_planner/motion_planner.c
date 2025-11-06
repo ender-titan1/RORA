@@ -25,10 +25,11 @@ int compare_remainders_desc_cb(const void *a, const void *b)
 
 bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
 {
+
     mp_joint_t *joint = cmd->joint;
-    float gear_ratio = joint->output_teeth/joint->pinion_teeth; // How many times the motor has to rotate to rotate the joint 360 degrees
-    float motor_degrees = cmd->degrees * gear_ratio;
-    drv8825_direction dir = (cmd->direction == CW) ? CCW : CW;
+    float gear_ratio = ((float)joint->output_teeth)/((float)joint->pinion_teeth); // How many times the motor has to rotate to rotate the joint 360 degrees
+    float motor_degrees = ((float)cmd->degrees) * gear_ratio;
+    uint8_t dir = (cmd->direction == CW) ? CCW : CW;
 
     uint16_t steps = motor_degrees/360.0f * joint->motor->stepsPerRotation;
 
