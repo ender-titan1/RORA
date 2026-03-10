@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "freertos/FreeRTOS.h"
 #include "drv8825.h"
 #include "esp_log.h"
 
@@ -49,7 +50,7 @@ void attach_motor(drv8825_t* motor)
     ESP_LOGI(TAG, "DIR pin set: %d", motor->pinDIR);
 
     gpio_set_direction(motor->pinEN, GPIO_MODE_OUTPUT);
-    gpio_set_level(motor->pinEN, 0);
+    gpio_set_level(motor->pinEN, motor->activeLow);
     ESP_LOGI(TAG, "EN pin set: %d", motor->pinEN);
 
     ESP_LOGI(TAG, "Initializing RMT channel at STEP pin %d", motor->pinSTEP);
@@ -61,7 +62,7 @@ void attach_motor(drv8825_t* motor)
         .resolution_hz = 1 * 1000 * 1000,
         .trans_queue_depth = 4,
         .flags.invert_out = false,
-        .flags.with_dma = false
+        .flags.with_dma = false,
     };
 
     rmt_new_tx_channel(&tx_config, &motor->channelRMT);
@@ -96,16 +97,13 @@ uint16_t prepare(drv8825_command_t *command, const char* tag)
     uint16_t steps = (uint16_t)(fraction * motor->stepsPerRotation);
 
     gpio_set_level(motor->pinDIR, (uint8_t)command->direction);
-
-    if (motor->activeLow)
-        gpio_set_level(motor->pinEN, 0);
-    else
-        gpio_set_level(motor->pinEN, 1);
+    gpio_set_level(motor->pinEN, motor->activeLow ? 0 : 1);
+    vTaskDelay(pdMS_TO_TICKS(3));
 
     return steps;
 }
 
-void execute(drv8825_command_t *command)
+void execute(drv8825_command_t *command, override_t disable)
 {
     if (!command->moving)
         return;
@@ -114,21 +112,28 @@ void execute(drv8825_command_t *command)
     uint16_t steps = prepare(command, TAG);
     ESP_LOGI(TAG, "Executing move: [STEP pin %d] [Steps %d]", motor->pinSTEP, steps);
 
-    rmt_transmit_config_t c = {};
+    rmt_transmit_config_t c = {
+        .flags.eot_level = 0
+    };
     rmt_stepper_loop_encoder_data_t data = {
         .pulse = command->pulse,
-        .loop_count = steps
+        .loop_count = steps,
     };
     rmt_transmit(motor->channelRMT, motor->encoderRMT, &data, sizeof(data), &c);
     rmt_tx_wait_all_done(motor->channelRMT, 10000);
 
+    if (disable == TRUE || (disable == NO_OVERRIDE && command->disable))
+    {
+        disable_motor(command->motor);
+    }
+
 }
 
-void execute_sync(uint8_t count, drv8825_command_t *commands, bool disable)
+void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable)
 {
     ESP_LOGI(TAG, "SYNC EXECUTE BEGIN");
     ESP_LOGI(SYNC_TAG, "%d commands issued", count);
-
+    
     // Run a check to make sure the same motor is not getting multiple commands
     uint8_t step_pins[count];
     for (uint8_t i = 0; i < count; i++)
@@ -166,7 +171,9 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, bool disable)
 
     ESP_LOGI(SYNC_TAG, "Beginning transmission");
 
-    rmt_transmit_config_t c = {};
+    rmt_transmit_config_t c = {
+        .flags.eot_level = 0
+    };
 
     for (uint8_t i = 0; i < count; i++)
     {
@@ -181,20 +188,17 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, bool disable)
 
     ESP_LOGI(SYNC_TAG, "Transmission completed succesfully!");
 
-    if (!disable)
-        return;
-
     // Make sure we disable the motor after the move
     for (uint8_t i = 0; i < count; i++)
     {
-        disable_motor(commands[i].motor);
+        if (disable == TRUE || (disable == NO_OVERRIDE && commands[i].disable))
+        {
+            disable_motor(commands[i].motor);
+        }
     }
 }
 
 void disable_motor(drv8825_t *motor)
 {
-    if (motor->activeLow)
-        gpio_set_level(motor->pinEN, 1);
-    else
-        gpio_set_level(motor->pinEN, 0);
+    gpio_set_level(motor->pinEN, motor->activeLow);
 }

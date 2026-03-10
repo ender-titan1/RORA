@@ -4,6 +4,10 @@ from menus import *
 import socket
 import struct
 
+class Direction(IntEnum):
+    CW = 1
+    CCW = 0
+
 class Commands(IntEnum):
     PC_CMD_CREATE_CURVE = 0xF0
     PC_CMD_COMPUTE_CURVE = 0xFA
@@ -11,49 +15,67 @@ class Commands(IntEnum):
     PC_CMD_EXECUTE = 0xFC
     PC_CMD_MOVE = 0xE0
 
-class EaseType(Enum):
-    EASE_LINEAR = 0
-    EASE_SINE = 1
-    EASE_CUBIC = 2
+class EaseType(IntEnum):
+    LINEAR = 0
+    SINE = 1
+    CUBIC = 2
+
+class DirectionOverride(IntEnum):
+    NONE = 0xFF
+    CW = 0
+    CCW = 1
+
+class DisableOverride(IntEnum):
+    NONE = 0xFF
+    DISABLE = 1
+    KEEP_ENABLED = 0
 
 CURVE_CMD_STRUCT_FMT = '<BBBBBBffff'
 COMPUTE_CMD_STRUCT_FMT = '<BBBBBfB'
-EXECUTE_CMD_FMT = '<BBBBB'
+EXECUTE_CMD_FMT = '<BBBBBBB'
+
+NUMBER_REGEX = r"^\s*\d+(\.\d+)?\s*$"
 
 slots = [[Text(), Text()] for _ in range(3)]
+slots_sat = [[Text(), Text()]]
 
-#s = socket.socket()
-#s.connect(('192.168.4.1', 3333))
+s = socket.socket()
+s.connect(('192.168.4.1', 3333))
 print("Connected to RORA")
 getch()
 
 #-------------TUI Components-------------
 blank = Label("")
 back_btn = ButtonOption("Back", lambda ctx: ctx.manager.goto("cmd"))
-target_slot = SliderOption("Target Slot", 1, 3, False, dispaly_func=(lambda x: str(x)))
-source_slot = SliderOption("Source Slot", 1, 3, False, dispaly_func=(lambda x: str(x)))
+target_slot = SliderOption("Target Slot", 1, 3, False, display_val=True)
+source_slot = SliderOption("Source Slot", 1, 3, False, display_val=True)
 controller = DropdownOption("Controller", ["Core", "Satellite"], 0)
 
-motor = DynamicOption("Motor", [
-    DropdownOption("__core__Motor", ["Shoulder", "Elbow"], 0),
-    DropdownOption("__sat__Motor", ["Base"], 0),
+motor = DynamicOption[DropdownOption]("Motor", [
+    DropdownOption("motor_core", ["Shoulder", "Elbow"], 0),
+    DropdownOption("motor_sat", ["Base"], 0),
 ], 0)
 
-duration = TextInputOption("Duration", 1, r"^\s*\d+(\.\d+)?\s*$")
-accel_time = TextInputOption("Accel. Time", 0.25, r"^\s*\d+(\.\d+)?\s*$")
-decel_time = TextInputOption("Decel. Time", 0.25, r"^\s*\d+(\.\d+)?\s*$")
-resolution = TextInputOption("Resolution", 0.01, r"^\s*\d+(\.\d+)?\s*$")
+duration = TextInputOption("Duration", 1, NUMBER_REGEX)
+accel_time = TextInputOption("Accel. Time", 0.25, NUMBER_REGEX)
+decel_time = TextInputOption("Decel. Time", 0.25, NUMBER_REGEX)
+resolution = TextInputOption("Resolution", 0.01, NUMBER_REGEX)
 
-degrees = TextInputOption("Degrees", "", r"^\s*\d+(\.\d+)?\s*$")
+degrees = TextInputOption("Degrees", "45", NUMBER_REGEX)
 
-ease = DropdownOption("Easing Type", ["Linear", "Sine", "Cubic"], 1)
-direction = DropdownOption("Direction", ["CCW", "CW"], 1)
+ease = EnumDropdownOption("Easing Type", EaseType, EaseType.SINE)
+direction = EnumDropdownOption("Direction", Direction, Direction.CW, capitalize=False)
+disable_override = EnumDropdownOption("[Override] Disable", DisableOverride, DisableOverride.NONE);
+direction_override = EnumDropdownOption("[Override] Direction", DirectionOverride, DirectionOverride.NONE, capitalize=False);
 
 #-------------Main Functions-------------
 
 def show_slot_table(manager: InterfaceManager):
+
+    sl = slots if controller.current == "Core" else slots_sat
+
     out = Text()
-    for i, slot in enumerate(slots):
+    for i, slot in enumerate(sl):
         out.append(Text(f"Slot {i+1}".ljust(8)))
         out.append(" | ")
         s0 = slot[0]
@@ -70,46 +92,52 @@ def show_slot_table(manager: InterfaceManager):
 
 
 def send_cmd(ctx: ActionContext) -> None:
+
+    sl = slots if controller.current == "Core" else slots_sat
+
     if ctx.manager.current_ui.id == "curve":
         packet = struct.pack(CURVE_CMD_STRUCT_FMT,
             int(Commands.PC_CMD_CREATE_CURVE),
-            target_slot.current - 1,
+            target_slot.value - 1,
             0,
-            controller.i,
-            1,
-            ease.i,
-            float(accel_time.contents),
-            float(decel_time.contents),
-            float(duration.contents),
-            float(resolution.contents)
+            controller.value[0],
+            motor.option.value[0] + 1,
+            ease.value.value,
+            float(accel_time.value),
+            float(decel_time.value),
+            float(duration.value),
+            float(resolution.value)
         )
-        #s.send(packet)
+        s.send(packet)
 
-        slots[target_slot.current - 1][0] = Text(f"{ease.current.ljust(6)} ⋮ {duration.contents.rjust(5)}s ⋮ A: {accel_time.contents.rjust(5)}s", "blue bold")
+        sl[target_slot.current - 1][0] = Text(f"{ease.current.ljust(6)} ⋮ {duration.value.rjust(5)}s ⋮ A: {accel_time.value.rjust(5)}s", "blue bold")
 
     if ctx.manager.current_ui.id == "compute":
         packet = struct.pack(COMPUTE_CMD_STRUCT_FMT,
             int(Commands.PC_CMD_COMPUTE_CURVE),
-            target_slot.current - 1,
-            source_slot.current - 1,
-            controller.i,
-            1,
-            float(degrees.contents),
-            direction.i
+            target_slot.value - 1,
+            source_slot.value - 1,
+            controller.value[0],
+            motor.option.value[0] + 1,
+            float(degrees.value),
+            direction.value.value
         )
-        #s.send(packet)
+        s.send(packet)
 
-        slots[target_slot.current - 1][1] = Text(f"Src: {str(source_slot.current).ljust(1)} ⋮ {motor.option.current.rjust(10)} ⋮ {degrees.contents.rjust(3)} ⋮ {direction.current.rjust(3)} ", "blue bold")
+        sl[target_slot.current - 1][1] = Text(f"Src: {str(source_slot.current).ljust(1)} ⋮ {motor.option.current.rjust(10)} ⋮ {degrees.contents.rjust(3)} ⋮ {direction.current.rjust(3)} ", "blue bold")
 
     if ctx.manager.current_ui.id == "execute":
         packet = struct.pack(EXECUTE_CMD_FMT,
             int(Commands.PC_CMD_EXECUTE),
             0,
-            source_slot.current - 1,
-            controller.i,
-            1
+            source_slot.value - 1,
+            controller.value[0],
+            motor.option.value[0] + 1,
+            direction_override.value.value,
+            disable_override.value.value,
         )
-        #s.send(packet)
+        s.send(packet)
+
 
     ctx.manager.goto("cmd")
 
@@ -129,7 +157,7 @@ compute_menu = OptionSelection([
 ], 2, preprocessor=show_slot_table).add_event(controller, update_motor)
 
 exec_menu = OptionSelection([
-    controller, source_slot, blank, send_btn, back_btn
+    controller, source_slot, blank, direction_override, disable_override, blank, send_btn, back_btn,
 ], 2, preprocessor=show_slot_table).add_event(controller, update_motor)
 
 cmd_menu = SimpleSelection({

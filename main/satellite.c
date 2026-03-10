@@ -6,20 +6,32 @@ static const char *TAG = "sat_main";
 
 static uint8_t core_mac[6] = { 0x68, 0x25, 0xDD, 0x20, 0x29, 0x3C };
 
-static volatile mp_movement_curve_config_t sat_curve_cfg = {0};
-static volatile mp_movement_curve_t sat_curve = {0};
-static volatile mp_joint_command_t sat_cmd = {0};
-static volatile drv8825_command_t sat_drv8825_cmd = {0};
-static drv8825_t base_motor_nema17 = {0};
-static mp_joint_t base = {0};
+static volatile controller_specific_buffers_t *buffers;
+
+static drv8825_t base_motor_nema17 = {
+    .pinSTEP = GPIO_NUM_18,
+    .pinDIR = GPIO_NUM_5,
+    .pinEN = GPIO_NUM_23,
+    .stepsPerRotation = 200 * 32,
+    .activeLow = true,
+    .channelRMT = NULL,
+    .encoderRMT = NULL,
+};
+static mp_joint_t base = {
+    .motor = &base_motor_nema17,
+    .pinion_teeth = 25,
+    .output_teeth = 125,
+    .disable_by_default = false
+};
 
 static void sat_cmd_curve(data_frame_t *cmd, uint8_t len)
 {
     ESP_LOGI(TAG, "MP Curve command received");
 
-    memcpy(&sat_curve_cfg, cmd->payload, sizeof(mp_movement_curve_config_t));
+    mp_curve_command_payload_t payload;
+    memcpy(&payload, cmd->payload, sizeof(mp_curve_command_payload_t));
 
-    create_eased_movement_curve(&sat_curve_cfg, &sat_curve);
+    create_eased_movement_curve(&payload.cfg, &buffers->curves[payload.curve_id]);
 }
 
 // THIS CODE ALSO LEAKS - and this one I will have to fix, but not now
@@ -31,20 +43,31 @@ static void sat_cmd_compute(data_frame_t *cmd, uint8_t len)
     memcpy(&payload, cmd->payload, sizeof(payload));
 
     mp_joint_command_t mp_cmd = {
-        .joint = &base,
-        .profile = &sat_curve,
-        .duration_s = sat_curve.cfg->duration_s,
+        .joint = &buffers->joints[payload.joint_id],
+        .profile = &buffers->curves[payload.curve_id],
         .degrees = payload.degrees,
         .direction = payload.dir,
     };
 
-    create_drv8825_command(&mp_cmd, &sat_drv8825_cmd);
+    mp_cmd.duration_s = mp_cmd.profile->cfg->duration_s;
+
+    create_drv8825_command(&mp_cmd, &buffers->commands[payload.command_id]);
+
+    // Kinda stupid but it works
+    buffers->local_commands[payload.command_id] = payload.command_id + 1;
 }
 
 static void sat_cmd_exec(data_frame_t *cmd, uint8_t len)
 {
     ESP_LOGI(TAG, "Execute command received");
-    execute(&sat_drv8825_cmd);
+
+    mp_linked_motion_t motion;
+    memcpy(&motion, cmd->payload, sizeof(mp_linked_motion_t));
+
+    // Execute the motion, only executing the local commands
+    // The `next` value in the recieved motion is a pointer and is completely useless,
+    // but I see no point making a separate struct just for transmission, so we will just ignore it
+    execute_local_commands_in_motion(&motion, buffers);
 
     data_frame_t ack = {
         .command = ACK,
@@ -59,19 +82,11 @@ void sat_main()
     wifi_init();
     coordinator_connect(core_mac);
 
-    base_motor_nema17.pinSTEP = GPIO_NUM_18,
-    base_motor_nema17.pinDIR = GPIO_NUM_5,
-    base_motor_nema17.pinEN = GPIO_NUM_23,
-    base_motor_nema17.stepsPerRotation = 200 * 32,
-    base_motor_nema17.activeLow = true,
-    base_motor_nema17.channelRMT = NULL,
-    base_motor_nema17.encoderRMT = NULL,
-
-    base.motor = &base_motor_nema17,
-    base.pinion_teeth = 25,
-    base.output_teeth = 125,
-
     attach_motor(&base_motor_nema17);
+    disable_motor(&base_motor_nema17);
 
     bind_cmd_callbacks(sat_cmd_curve, sat_cmd_compute, sat_cmd_exec, NULL);
+    buffers = malloc(sizeof(controller_specific_buffers_t));
+    init_buffers(buffers, 16, 8, 2);
+    buffers->joints[0] = base;
 }

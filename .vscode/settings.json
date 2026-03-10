@@ -24,5 +24,6 @@
     "coordinator_core.h": "c",
     "coordinator_sat.h": "c",
     "satellite.h": "c"
-  }
+  },
+  "idf.currentSetup": "C:\\Users\\supsz\\esp\\v5.5.1\\esp-idf"
 }

@@ -7,7 +7,7 @@
 #define TCP_PORT 3333
 
 static const char *TAG = "core_main";
-static uint8_t sat_mac[6] = { 0xEC, 0xE3, 0x34, 0x17, 0xD0, 0xC8 };
+static uint8_t sat_mac[6] = { 0xEC, 0xE3, 0x34, 0x1A, 0xE8, 0x00 };
 static mp_movement_curve_t curves[3] = {0};
 static drv8825_command_t commands[3] = {0};
 
@@ -25,8 +25,9 @@ static drv8825_t shoulder_motor_nema23 = {
 
 static mp_joint_t shoulder = {
     .motor = &shoulder_motor_nema23,
-    .pinion_teeth = 20,
+    .pinion_teeth = 35,
     .output_teeth = 70,
+    .disable_by_default = false
 };
 
 static void tcp_server_task(void *arg)
@@ -84,12 +85,6 @@ static void pc_command_task(void *arg)
     {
         if (xQueueReceive(pc_cmd_queue, &cmd, portMAX_DELAY) == pdTRUE)
         {
-            if (cmd.payload.controller != 0)
-            {
-                ESP_LOGW(TAG, "Satellite commands not implemented yet!");
-                continue;
-            }
-
             uint8_t target_slot = cmd.payload.slot;
             uint8_t src_slot = cmd.payload.src_slot;
             mp_joint_t *joint = NULL;
@@ -106,6 +101,16 @@ static void pc_command_task(void *arg)
             // THIS CODE LEAKS - but I'm too lazy to fix that
             if (cmd.cmd == PC_CMD_CREATE_CURVE)
             {
+                if (cmd.payload.controller == 1)
+                {
+                    data_frame_t frame = {
+                        .command = CMD_MP_CURVE,
+                    };
+                    memcpy(&frame.payload, &cmd.payload.curve_cfg, sizeof(mp_movement_curve_config_t));
+                    transmit_frame(sat_mac, &frame);
+                    continue;
+                }
+
                 mp_movement_curve_config_t *cfg = malloc(sizeof(mp_movement_curve_config_t));
                 memcpy(cfg, &cmd.payload.curve_cfg, sizeof(mp_movement_curve_config_t));
                 create_eased_movement_curve(cfg, &curves[target_slot]);
@@ -120,22 +125,45 @@ static void pc_command_task(void *arg)
                     continue;
                 }
 
+                if (cmd.payload.controller == 1)
+                {
+                    data_frame_t frame = {
+                        .command = CMD_MP_COMPUTE,
+                    };
+                    memcpy(&frame.payload, &cmd.payload.compute_cfg, sizeof(mp_joint_command_payload_t));
+                    transmit_frame(sat_mac, &frame);
+                    continue;
+                }
+
+
                 mp_joint_command_t jc = {
-                    .degrees = cmd.payload.cmd.degrees,
-                    .direction = cmd.payload.cmd.dir,
+                    .degrees = cmd.payload.compute_cfg.degrees,
+                    .direction = cmd.payload.compute_cfg.dir,
                     .duration_s = curves[src_slot].cfg->duration_s,
                     .profile = &curves[src_slot],
                     .joint = joint
                 };
-                ESP_LOGI(TAG, "%f", curves[src_slot].cfg->duration_s);
-                ESP_LOGI(TAG, "%d", joint->motor->pinSTEP);
                 create_drv8825_command(&jc, &commands[target_slot]);
             }
 
             if (cmd.cmd == PC_CMD_EXECUTE)
-            {
-                execute(&commands[src_slot]);
-                disable_motor(commands[src_slot].motor);
+            {                
+                if (cmd.payload.controller == 1)
+                {
+                    data_frame_t frame = {
+                        .command = CMD_EXECUTE,
+                    };
+                    memcpy(&frame.payload, &cmd.payload.exec_cfg, sizeof(execute_overrides_t));
+                    transmit_frame(sat_mac, &frame);
+                    continue;
+                }
+
+                if (cmd.payload.exec_cfg.direction_override != NO_OVERRIDE)
+                {
+                    commands[src_slot].direction = cmd.payload.exec_cfg.direction_override;
+                }
+
+                execute(&commands[src_slot], (override_t)cmd.payload.exec_cfg.disable_override);
             }
 
         }
@@ -153,74 +181,14 @@ void core_main()
     attach_motor(&shoulder_motor_nema23);
     disable_motor(&shoulder_motor_nema23);
 
-    sat_handshake(sat_mac);
+    if (!sat_handshake(sat_mac))
+        return;
 
+    mp_motion_planner_t *planner = init_motion_planner(16, 8, 1);
+    planner->core_buffers->joints[0] = shoulder;
+    ESP_LOGI(TAG, "%i", planner->core_buffers->joints[0].motor->pinSTEP);
+    memcpy(planner->satellite_addrs[0], sat_mac, sizeof(uint8_t) * MAC_ADDR_LEN);
+    demo_motion(planner);
+    execute_motion_globally(planner);
     return;
-
-    ESP_LOGW(TAG, "Creating movement curve...");
-
-    // Create movement curve on the core
-    mp_movement_curve_config_t cfg = {
-        .duration_s = 1,
-        .accel_time_s = 0.25,
-        .decel_time_s = 0.25,
-        .ease_type = EASE_SINE,
-        .resolution = 0.01,
-    };
-    mp_movement_curve_t curve;
-    create_eased_movement_curve(&cfg, &curve);
-
-    // Create movement curve on the satellite
-    data_frame_t curve_cmd = {
-        .command = CMD_MP_CURVE,
-        .payload = {0},
-    };
-    memcpy(curve_cmd.payload, (uint8_t*)&cfg, sizeof(cfg));
-    transmit_frame(sat_mac, &curve_cmd);
-    if (!await_response())
-    {
-        ESP_LOGW(TAG, "MP Curve command - no ACK");
-    }
-
-    ESP_LOGW(TAG, "Computing joint command...");
-
-    // Crete movement command on the core
-    mp_joint_command_t jc = {
-        .joint = &shoulder,
-        .profile = &curve,
-        .degrees = 90,
-        .direction = CW,
-        .duration_s = 1,
-    };
-    drv8825_command_t motor_cmd = {0};
-    create_drv8825_command(&jc, &motor_cmd);
-
-    // Create movement command on the satellite
-    mp_joint_command_payload_t jcp = {
-        .degrees = 180,
-        .dir = CCW,
-    };
-    data_frame_t compute_cmd = {
-        .command = CMD_MP_COMPUTE,
-        .payload = {0},
-    };
-    memcpy(compute_cmd.payload, (uint8_t*)&jcp, sizeof(jcp));
-    transmit_frame(sat_mac, &compute_cmd);
-    if (!await_response())
-    {
-        ESP_LOGW(TAG, "MP Compute command - no ACK");
-    }
-
-    // Execute
-    data_frame_t execute_cmd = {
-        .command = CMD_EXECUTE,
-        .payload = {0},
-    };
-    transmit_frame(sat_mac, &execute_cmd);
-    await_response();
-    execute(&motor_cmd);
-
-    detach_motor(&shoulder_motor_nema23);
-    delete_drv8825_command(&motor_cmd);
-    delete_eased_movement_curve(&curve);
 }

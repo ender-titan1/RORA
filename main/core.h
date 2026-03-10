@@ -30,7 +30,8 @@ typedef struct __attribute__((packed)) {
     uint8_t motor;
     union {
         mp_movement_curve_config_t curve_cfg;
-        mp_joint_command_payload_t cmd;
+        mp_joint_command_payload_t compute_cfg;
+        execute_overrides_t exec_cfg;
     };
 } pc_command_payload_t;
 

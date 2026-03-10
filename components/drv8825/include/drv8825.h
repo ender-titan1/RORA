@@ -6,6 +6,17 @@
 #define CCW 0
 #define CW 1
 
+typedef enum {
+    FALSE = 0x00,
+    TRUE = 0x01,
+    NO_OVERRIDE = 0xFF,
+} override_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t direction_override;
+    uint8_t disable_override; 
+} execute_overrides_t;
+
 typedef struct {
     int pinSTEP;
     int pinDIR;
@@ -33,6 +44,7 @@ typedef struct {
 typedef struct {
     drv8825_t *motor;
     bool moving;
+    bool disable;
 
     int degrees;
     uint8_t direction;
@@ -48,7 +60,7 @@ size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbol
 
 void attach_motor(drv8825_t *motor);
 uint16_t prepare(drv8825_command_t *command, const char* tag);
-void execute(drv8825_command_t *command);
-void execute_sync(uint8_t count, drv8825_command_t *commands, bool disable);
+void execute(drv8825_command_t *command, override_t disable);
+void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable);
 void disable_motor(drv8825_t *motor);
 void detach_motor(drv8825_t *motor);

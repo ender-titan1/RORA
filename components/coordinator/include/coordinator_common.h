@@ -3,6 +3,7 @@
 #include "esp_now.h"
 #include "nvs_flash.h"
 #include "drv8825.h"
+#include "motion_planner.h"
 
 #define CMD_HANDSHAKE 0xF0
 #define CMD_MP_CURVE 0xA0
@@ -16,7 +17,15 @@
 typedef struct __attribute__((packed)) {
     float degrees;
     uint8_t dir;
+    uint8_t curve_id;
+    uint8_t joint_id;
+    uint8_t command_id;
 } mp_joint_command_payload_t;
+
+typedef struct __attribute__((packed)) {
+    mp_movement_curve_config_t cfg;
+    uint8_t curve_id;
+} mp_curve_command_payload_t;
 
 typedef struct __attribute__((packed)) {
     uint8_t command;

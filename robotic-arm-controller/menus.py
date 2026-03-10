@@ -1,14 +1,16 @@
 from tui import *
-from typing import List, Callable
+from typing import List, Callable, TypeVar, Generic, Any, Type
 from abc import ABC, abstractmethod
-from termcolor import colored
+from enum import IntEnum
 from rich.text import Text
 import re
 
 class Option(ABC):
-    def __init__(self, name: str, action: Callable[[ActionContext], None]):
+    def __init__(self, name: str, action: Callable[[ActionContext], None], value_getter: Callable[[Option], Any] = (lambda _: None), display_name: str | None = None):
         self.action = action
         self.name = name
+        self.value_getter = value_getter
+        self.display_name = name if display_name is None else display_name
 
     @abstractmethod
     def __repr__(self):
@@ -23,12 +25,15 @@ class Option(ABC):
     def reset(self, manager):
         pass
 
-    def state_name(self):
-        return f"__option__{self.name}"
+    @property
+    def value(self):
+        return self.value_getter(self)
+
+T = TypeVar("V", bound=Option)
 
 class DropdownOption(Option):
-    def __init__(self, name, options, default):
-        super().__init__(name, lambda ctx: ctx.manager.goto(f"__option__{self.name}"))
+    def __init__(self, name, options, default, value_getter = (lambda d: (d.i, d.current)), display_name=None):
+        super().__init__(name, lambda ctx: ctx.manager.goto(f"__option__{self.name}"), value_getter, display_name)
         self.default = default
         self.options = options
         self.i = default
@@ -54,19 +59,37 @@ class DropdownOption(Option):
         manager.old_ui.trigger_event(option)
         manager.goto(manager.old_ui.id)
 
+class EnumDropdownOption(DropdownOption):
+    def __init__(self, name, enum: type[IntEnum], default: IntEnum, display_name=None, capitalize=True):
+        self.enum_cls = enum
+        self.enum_members = self.enum_cls._member_names_
+        options = [m.name.replace('_', ' ').capitalize() if capitalize else m.name.replace('_', ' ') for m in self.enum_cls]
+        default_i = self.enum_members.index(default.name)
+
+        super().__init__(name, options, default_i, lambda d: (d.value.value, d.value), display_name)
+
+    @property
+    def value(self):
+        return self.enum_cls[self.current.upper().replace(' ', '_')]
+
 class SliderOption(Option):
     def __init__(self, name,
-                 default: int, max: int, fill: bool = True,
-                 left_label: str = "", right_label: str = "",
-                 dispaly_func: Callable[[int], str] = None):
-        super().__init__(name, lambda _: None)
+                 default: int, 
+                 max: int,
+                 fill: bool = True,
+                 left_label: str = "",
+                 right_label: str = "",
+                 display_val: bool = False,
+                 value_getter = (lambda s: s.current),
+                 display_name=None):
+        super().__init__(name, lambda _: None, value_getter, display_name)
         self.default = default
         self.current = default
         self.max = max
         self.fill = fill
         self.left = f"{left_label} " if left_label is not None else None
         self.right = f" {right_label}" if right_label is not None else None
-        self.display_func = dispaly_func
+        self.display_val = display_val
 
     def on_input(self, ui, key):
         if key == "left":
@@ -94,22 +117,21 @@ class SliderOption(Option):
             string = (empty_sq * empty) + full_sq + (empty_sq * remaining)
 
         display = ""
-
-        if self.display_func != None:
-            display = f" ({self.display_func(self.current)})"
+        if self.display_val:
+            display = f" ({self.value})"
 
         return f"{self.left}{string}{self.right}{display}"
 
 class ButtonOption(Option):
-    def __init__(self, name, action):
-        super().__init__(name, action)
+    def __init__(self, name, action, display_name=None):
+        super().__init__(name, action, display_name)
 
     def __repr__(self):
         return self.name
 
 class TextInputOption(Option):
-    def __init__(self, name, default="", regex=None):
-        super().__init__(name, lambda ctx: TextInputOption.handler(ctx.ui, self, ctx.string))
+    def __init__(self, name, default="", regex=None, value_getter = (lambda ti: ti.contents), display_name=None):
+        super().__init__(name, lambda ctx: TextInputOption.handler(ctx.ui, self, ctx.string), value_getter, display_name)
         self.contents = str(default)
         self.default = str(default)
         self.regex = regex
@@ -153,22 +175,22 @@ class TextInputOption(Option):
 
     def __repr__(self):
         return self.contents
-    
-    def state_name(self):
-        return f"__field__{self.name}"
 
 class Label(Option):
     def __init__(self, name):
-        super().__init__(name, None)
+        super().__init__(name, None, None)
 
     def __repr__(self):
-        return self.name
+        return self.display_name
     
-class DynamicOption(Option):
-    def __init__(self, name, options, default):
-        super().__init__(name, None)
+class DynamicOption(Option,  Generic[T]):
+    def __init__(self, name, options: List[T], default, display_name=None):
+        super().__init__(name, None, None, display_name)
 
-        self.option: Option = options[default]
+        for o in options:
+            o.display_name = display_name
+
+        self.option: T = options[default]
         self.options = options
         self.action = self.option.action
         self.idx = default
@@ -185,9 +207,12 @@ class DynamicOption(Option):
         self.action = self.option.action
         self.idx = idx
 
+    @property
+    def value(self):
+        return self.option.value
+
     def __repr__(self):
         return self.option.__repr__()
-
 
 class OptionSelection(AbstractSelection):
     def __init__(self, selection: List[Option], padding=0, preprocessor=None):
@@ -201,11 +226,11 @@ class OptionSelection(AbstractSelection):
         self.edit_mode = False
         self.parent = None
 
-    def add_event(self, option, func):
+    def add_event(self, option: Option, func):
         self.events[option.name] = func
         return self
 
-    def trigger_event(self, option):
+    def trigger_event(self, option: Option):
         for (n, f) in self.events.items():
             if n == option.name:
                 f(ActionContext(self, self.get_manager(), option.name))
@@ -277,7 +302,7 @@ class OptionSelection(AbstractSelection):
                 output.append("\n")
                 continue
 
-            padding = self.max_name_len - len(o.name) + self.padding
+            padding = self.max_name_len - len(o.display_name) + self.padding
 
             option_str = str(o)
 
@@ -286,7 +311,7 @@ class OptionSelection(AbstractSelection):
             else:
                 option_str_text = Text(option_str)
 
-            line = Text(f"{o.name}:{' ' * (padding + 1)}")
+            line = Text(f"{o.display_name}:{' ' * (padding + 1)}")
             line += option_str_text
             
             if i == self.idx:

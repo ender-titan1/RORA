@@ -61,7 +61,6 @@ static void sat_command_task(void *arg)
                 break;
             case CMD_MP_COMPUTE:
                 compute_callback(&cmd, len);
-                break;
             case CMD_EXECUTE:
                 exec_callback(&cmd, len);
                 break;
