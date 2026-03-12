@@ -6,7 +6,7 @@ static const char *TAG = "sat_main";
 
 static uint8_t core_mac[6] = { 0x68, 0x25, 0xDD, 0x20, 0x29, 0x3C };
 
-static volatile controller_specific_buffers_t *buffers;
+static controller_specific_buffers_t *buffers;
 
 static drv8825_t base_motor_nema17 = {
     .pinSTEP = GPIO_NUM_18,
@@ -38,10 +38,10 @@ static void sat_cmd_curve(data_frame_t *cmd, uint8_t len)
 static void sat_cmd_compute(data_frame_t *cmd, uint8_t len)
 {
     ESP_LOGI(TAG, "MP Compute command received");
-
+    
     mp_joint_command_payload_t payload;
-    memcpy(&payload, cmd->payload, sizeof(payload));
-
+    memcpy(&payload, cmd->payload, sizeof(mp_joint_command_payload_t));
+    
     mp_joint_command_t mp_cmd = {
         .joint = &buffers->joints[payload.joint_id],
         .profile = &buffers->curves[payload.curve_id],
@@ -87,6 +87,6 @@ void sat_main()
 
     bind_cmd_callbacks(sat_cmd_curve, sat_cmd_compute, sat_cmd_exec, NULL);
     buffers = malloc(sizeof(controller_specific_buffers_t));
-    init_buffers(buffers, 16, 8, 2);
+    init_buffers(buffers, 16, 8, 1);
     buffers->joints[0] = base;
 }

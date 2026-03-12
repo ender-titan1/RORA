@@ -6,6 +6,7 @@ typedef void (*sat_callback_func)(data_frame_t *cmd, uint8_t len);
 typedef struct {
     data_frame_t frame;
     int len;
+    uint8_t mac[MAC_ADDR_LEN];
 } queued_data_frame_t;
 
 void sat_init();

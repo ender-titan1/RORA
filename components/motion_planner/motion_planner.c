@@ -30,7 +30,6 @@ int compare_remainders_desc_cb(const void *a, const void *b)
 
 bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
 {
-
     mp_joint_t *joint = cmd->joint;
     float gear_ratio = ((float)joint->output_teeth)/((float)joint->pinion_teeth); // How many times the motor has to rotate to rotate the joint 360 degrees
     float motor_degrees = ((float)cmd->degrees) * gear_ratio;
@@ -254,7 +253,8 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
         i++;
     }
 
-    memcpy(&curve->cfg, &cfg, sizeof(mp_movement_curve_config_t));
+    curve->cfg = malloc(sizeof(mp_movement_curve_config_t));
+    *curve->cfg = *cfg;
     curve->n_points = i;
     curve->points = points;
 }
@@ -297,6 +297,7 @@ void delete_motion_planner(mp_motion_planner_t *planner)
 void delete_eased_movement_curve(mp_movement_curve_t *curve)
 {
     free(curve->points);
+    free(curve->cfg);
 }
 
 void delete_drv8825_command(drv8825_command_t *cmd)
@@ -427,7 +428,7 @@ void compile_command(mp_motion_planner_t *planner, size_t on_controller, size_t 
         .degrees = angle,
         .dir = dir
     };
-    memcpy(&frame.payload, &payload, sizeof(mp_joint_command_payload_t));
+    memcpy(frame.payload, &payload, sizeof(mp_joint_command_payload_t));
     transmit_frame(planner->satellite_addrs[on_controller - 1], &frame);
     if (!await_response())
     {
@@ -479,7 +480,7 @@ void execute_motion_globally(mp_motion_planner_t *planner)
         data_frame_t frame = {
             .command = CMD_EXECUTE,
         };
-        memcpy(&frame.payload, &cur, sizeof(mp_linked_motion_t));
+        memcpy(&frame.payload, cur, sizeof(mp_linked_motion_t));
         for (size_t j = 0; j < MAX_SATELLITES; j++)
         {
             if (planner->satellite_addrs[j][0] == 0x00)

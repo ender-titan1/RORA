@@ -131,6 +131,9 @@ void execute(drv8825_command_t *command, override_t disable)
 
 void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable)
 {
+    if (count == 0)
+        return;
+    
     ESP_LOGI(TAG, "SYNC EXECUTE BEGIN");
     ESP_LOGI(SYNC_TAG, "%d commands issued", count);
     

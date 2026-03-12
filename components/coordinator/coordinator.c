@@ -79,7 +79,7 @@ void transmit_frame(uint8_t *mac, data_frame_t *cmd)
 {
     ESP_LOGI("coordinator", "Sending cmd %02X", cmd->command);
     cmd->crc = crc8_gen((uint8_t*)cmd, sizeof(data_frame_t) - 1);
-    esp_now_send(mac, (uint8_t*)cmd, sizeof(data_frame_t));
+    ESP_ERROR_CHECK(esp_now_send(mac, (uint8_t*)cmd, sizeof(data_frame_t)));
 }
 
 uint8_t crc8_gen(const uint8_t *data, uint8_t len)
