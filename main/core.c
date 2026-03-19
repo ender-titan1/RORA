@@ -186,9 +186,14 @@ void core_main()
 
     mp_motion_planner_t *planner = init_motion_planner(16, 8, 1);
     planner->core_buffers->joints[0] = shoulder;
-    ESP_LOGI(TAG, "%i", planner->core_buffers->joints[0].motor->pinSTEP);
     memcpy(planner->satellite_addrs[0], sat_mac, sizeof(uint8_t) * MAC_ADDR_LEN);
     demo_motion(planner);
     execute_motion_globally(planner);
+
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        execute_motion_globally(planner);
+    }
+
     return;
 }

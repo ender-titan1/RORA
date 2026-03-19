@@ -19,7 +19,7 @@ static void core_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t 
 
     if (frame->command == ACK)
     {
-        ESP_LOGI(TAG, "ACK received");
+        //ESP_LOGI(TAG, "ACK received");
         ack_received = true;
         return;
     }

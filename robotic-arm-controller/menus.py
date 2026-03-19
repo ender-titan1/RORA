@@ -218,7 +218,7 @@ class OptionSelection(AbstractSelection):
     def __init__(self, selection: List[Option], padding=0, preprocessor=None):
         super().__init__(len(selection))
         self.selection = selection
-
+        self.has_dynamic = False
         self.preprocessor = preprocessor
         self.events = {}
         self.padding = padding
@@ -229,6 +229,28 @@ class OptionSelection(AbstractSelection):
     def add_event(self, option: Option, func):
         self.events[option.name] = func
         return self
+    
+    def add_dynamic_selection(self, generator, recalculate_max_len=True):
+        if self.has_dynamic:
+            return
+        self.has_dynamic = True
+    
+        def update(_):
+            nonlocal self
+            dynamic_sel = generator()
+            l = len(dynamic_sel)
+            self.selection = self.selection[:-l] if l else self.selection
+            self.selection = self.selection + dynamic_sel
+
+            if recalculate_max_len:
+                self.max_name_len = max([len(o.name) for o in self.selection])
+                        
+        self.events["__dynamic_sel__"] = update
+
+        update(None)
+
+    def update_dynamic(self):
+        self.events["__dynamic_sel__"](None)
 
     def trigger_event(self, option: Option):
         for (n, f) in self.events.items():

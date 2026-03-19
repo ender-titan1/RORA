@@ -47,30 +47,36 @@ getch()
 #-------------TUI Components-------------
 blank = Label("")
 back_btn = ButtonOption("Back", lambda ctx: ctx.manager.goto("cmd"))
-target_slot = SliderOption("Target Slot", 1, 3, False, display_val=True)
-source_slot = SliderOption("Source Slot", 1, 3, False, display_val=True)
-controller = DropdownOption("Controller", ["Core", "Satellite"], 0)
 
-motor = DynamicOption[DropdownOption]("Motor", [
-    DropdownOption("motor_core", ["Shoulder", "Elbow"], 0),
-    DropdownOption("motor_sat", ["Base"], 0),
-], 0)
+# Motion profiles
+mp_name = TextInputOption("Profile Name", "")
+mp_id = SliderOption("ID", 1, 8, False, display_val=True)
+mp_duration = TextInputOption("Duration", 1, NUMBER_REGEX)
+mp_accel_time = TextInputOption("Accel. Time", 0.25, NUMBER_REGEX)
+mp_decel_time = TextInputOption("Decel. Time", 0.25, NUMBER_REGEX)
+mp_resolution = TextInputOption("Resolution", 0.01, NUMBER_REGEX)
 
-duration = TextInputOption("Duration", 1, NUMBER_REGEX)
-accel_time = TextInputOption("Accel. Time", 0.25, NUMBER_REGEX)
-decel_time = TextInputOption("Decel. Time", 0.25, NUMBER_REGEX)
-resolution = TextInputOption("Resolution", 0.01, NUMBER_REGEX)
+# Sequence
+add_motion = ButtonOption("Add motion", lambda ctx: ctx.manager.goto("motion"))
+remove_last = ButtonOption("Remove last")
+tools = ButtonOption("Tools", )
 
-degrees = TextInputOption("Degrees", "45", NUMBER_REGEX)
+# Motion
+add_submotion = ButtonOption("Add Submotion", lambda ctx: ctx.manager.goto("submotion"))
+hold_for = TextInputOption("Hold for s", 0.2, NUMBER_REGEX)
+delete_motion = ButtonOption("Delete", )
 
+# Submiotion
+joint = DropdownOption("Joint", ["Base", "Shoulder", "Elbow"], 0)
+profile = SliderOption("Profile", 1, 8, False, display_val=True)
+degrees = TextInputOption("Degrees", 45, NUMBER_REGEX)
 ease = EnumDropdownOption("Easing Type", EaseType, EaseType.SINE)
 direction = EnumDropdownOption("Direction", Direction, Direction.CW, capitalize=False)
-disable_override = EnumDropdownOption("[Override] Disable", DisableOverride, DisableOverride.NONE);
-direction_override = EnumDropdownOption("[Override] Direction", DirectionOverride, DirectionOverride.NONE, capitalize=False);
+delete_submotion = ButtonOption("Delete", )
 
 #-------------Main Functions-------------
 
-def show_slot_table(manager: InterfaceManager):
+""" def show_slot_table(manager: InterfaceManager):
 
     sl = slots if controller.current == "Core" else slots_sat
 
@@ -142,23 +148,19 @@ def send_cmd(ctx: ActionContext) -> None:
     ctx.manager.goto("cmd")
 
 def update_motor(ctx):
-    motor.set_option(0 if controller.current == "Core" else 1)
+    motor.set_option(0 if controller.current == "Core" else 1) """
 
-send_btn = ButtonOption("Send", send_cmd)
+confirm = ButtonOption("Confirm", )
 
 #-------------TUI Menus-------------
 
-curve_menu = OptionSelection([
-    controller, target_slot, blank, ease, duration, accel_time, decel_time, resolution, blank, send_btn, back_btn
-], 2, preprocessor=show_slot_table).add_event(controller, update_motor)
+seq_menu = OptionSelection([
+    add_motion, blank, remove_last, tools, blank, back_btn,
+], 2)
 
-compute_menu = OptionSelection([
-    controller, motor, target_slot, source_slot, blank, degrees, direction, blank, send_btn, back_btn
-], 2, preprocessor=show_slot_table).add_event(controller, update_motor)
-
-exec_menu = OptionSelection([
-    controller, source_slot, blank, direction_override, disable_override, blank, send_btn, back_btn,
-], 2, preprocessor=show_slot_table).add_event(controller, update_motor)
+motion_menu = OptionSelection([
+    add_submotion, hold_for, delete_motion
+], 2)
 
 cmd_menu = SimpleSelection({
     "Create Curve": lambda ctx: ctx.manager.goto("curve"),

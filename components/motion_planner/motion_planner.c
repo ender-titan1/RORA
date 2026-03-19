@@ -460,10 +460,14 @@ void execute_local_commands_in_motion(mp_linked_motion_t *motion, controller_spe
         continue;
 execute:
 
+        ESP_LOGI(TAG, "Executing cmd ID: %i", motion->command_ids[i]);
+
         commands[count] = bufs->commands[motion->command_ids[i]];
         uint8_t ovr = motion->overrides_direction[i];
+
+        // Reverse direction override to account for joint_t gears
         if (ovr != NO_OVERRIDE)
-            commands[count].direction = ovr;
+            commands[count].direction = (ovr == CW ? CCW : CW);
 
         count++;
     }
@@ -513,8 +517,8 @@ void demo_motion(mp_motion_planner_t *planner)
     
     // Compile: ID 1 |     base |  90 deg |  CW | new curve (1s; 0.2s a/d) (normal)
     compile_command(planner, 1, 1, DEMO_NORMAL, 0, 90, CW, &cfg);
-    // Compile: ID 4 | shoulder |  20 deg | CCW | normal curve
-    compile_command(planner, 0, 4, DEMO_NORMAL, 0, 20, CCW, &cfg);
+    // Compile: ID 3 |     base | 180 deg | CCW | normal curve
+    compile_command(planner, 1, 3, DEMO_NORMAL, 0, 180, CCW, NULL);
     
     cfg.duration_s = 0.75;
     cfg.accel_time_s = 0.15,
@@ -522,16 +526,12 @@ void demo_motion(mp_motion_planner_t *planner)
     
     // Compile: ID 2 | shoulder |  45 deg | CCW | new curve (0.75s, 0.15s a/d) (fast)
     compile_command(planner, 0, 2, DEMO_FAST, 0, 45, CCW, &cfg);
+    // Compile: ID 4 | shoulder |  30 deg | CCW | fast curve
+    compile_command(planner, 0, 4, DEMO_FAST, 0, 30, CCW, NULL);
     
-    cfg.duration_s = 2;
-    cfg.accel_time_s = 0.4;
-    cfg.decel_time_s = 0.4;
-    
-    // Compile: ID 3 |     base | 180 deg | CCW | new curve (2s; 0.4s a/d) (slow)
-    compile_command(planner, 1, 3, DEMO_SLOW, 0, 180, CCW, &cfg);
 
-    mp_linked_motion_t *motions = malloc(sizeof(mp_linked_motion_t) * 3);
-    generate_empty_motion(motions, 3); 
+    mp_linked_motion_t *motions = malloc(sizeof(mp_linked_motion_t) * 4);
+    generate_empty_motion(motions, 4); 
     
     // Synched move of base (90 CW normal) and shoulder (45 CCW fast)
     mp_linked_motion_t *m0 = &motions[0];
@@ -545,11 +545,16 @@ void demo_motion(mp_motion_planner_t *planner)
     m1->overrides_direction[0] = CW;
     m1->count = 1;
     
-    // Synched move of base (180 CCW slow) and shoulder (20 CCW normal)
+    // Synched move of base (180 CCW normal) and shoulder (30 CCW normal)
     mp_linked_motion_t *m2 = &motions[2];
     m2->command_ids[0] = 3;
     m2->command_ids[1] = 4;
     m2->count = 2;
+
+    mp_linked_motion_t *m3 = &motions[3];
+    m3->command_ids[0] = 4;
+    m3->overrides_direction[0] = CW;
+    m3->count = 1;
 
     planner->motion = &motions[0];
 }
