@@ -25,6 +25,8 @@ static void sat_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
     uint8_t generated_crc = crc8_gen(data, len - 1);
     uint8_t original_crc = cmd.crc;
 
+    ESP_LOGI(TAG, "%02x/%02x", original_crc, generated_crc);
+
     if (generated_crc != original_crc)
     {
         ESP_LOGW(TAG, "Data received, CRC8 invalid (expected %02X, got %02X)", original_crc, generated_crc);

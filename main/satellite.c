@@ -4,7 +4,7 @@
 
 static const char *TAG = "sat_main";
 
-static uint8_t core_mac[6] = { 0x80, 0x7D, 0xCA, 0x3F, 0x0C, 0x00 };
+static uint8_t core_mac[6] = { 0xAC, 0xA7, 0x04, 0x2C, 0x59, 0x28 };
 
 static controller_specific_buffers_t *buffers;
 

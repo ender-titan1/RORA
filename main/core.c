@@ -7,7 +7,7 @@
 #define TCP_PORT 3333
 
 static const char *TAG = "core_main";
-static uint8_t sat_mac[6] = { 0x00, 0x40, 0x0A, 0x3C, 0xE4, 0x4B };
+static uint8_t sat_mac[6] = { 0x80, 0xF1, 0xB2, 0x63, 0x6E, 0x90 };
 static mp_movement_curve_t curves[3] = {0};
 static drv8825_command_t commands[3] = {0};
 
@@ -189,10 +189,6 @@ static void pc_command_task(void *arg)
 
 void core_main()
 {
-    // uint8_t mac[6];
-    // esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
-    // ESP_LOGI(TAG, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
     wifi_init();
     pc_cmd_queue = xQueueCreate(8, sizeof(pc_command_t));
     xTaskCreate(pc_command_task, "pc_command", 4096, NULL, 4, NULL);

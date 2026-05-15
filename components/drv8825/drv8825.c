@@ -15,6 +15,14 @@ size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbol
     }
 
     rmt_stepper_loop_encoder_data_t *d = (rmt_stepper_loop_encoder_data_t*)data;
+    
+    // Prevent overwrites
+    if (symbols_written >= d->loop_count)
+    {
+        *done = true;
+        return 0;
+    }
+    
     size_t symbols_to_write = d->loop_count - symbols_written;
 
     if (symbols_to_write > symbols_free)
@@ -157,7 +165,7 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
 
     ESP_LOGI(SYNC_TAG, "Preparing commands");
 
-    rmt_stepper_loop_encoder_data_t data[count];
+    rmt_stepper_loop_encoder_data_t* data = calloc(count, sizeof(rmt_stepper_loop_encoder_data_t));
     for (uint8_t i = 0; i < count; i++)
     {
         drv8825_command_t command = commands[i];
@@ -188,6 +196,8 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
     {
         rmt_tx_wait_all_done(commands[i].motor->channelRMT, 10000);
     }
+
+    free(data);
 
     ESP_LOGI(SYNC_TAG, "Transmission completed succesfully!");
 

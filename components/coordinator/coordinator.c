@@ -23,8 +23,9 @@ void wifi_init()
 
 #if CONFIG_DEVICE_ROLE_CORE
     esp_netif_create_default_wifi_ap();
-    esp_netif_create_default_wifi_sta();
 #endif
+
+    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -57,6 +58,11 @@ void wifi_init()
 #endif
     ESP_ERROR_CHECK(esp_wifi_start());
 
+#if CONFIG_DEVICE_ROLE_SAT
+    ESP_ERROR_CHECK(esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE));
+#endif
+
+    vTaskDelay(pdMS_TO_TICKS(100));
     ESP_ERROR_CHECK(esp_now_init());
 
 #if CONFIG_DEVICE_ROLE_CORE
@@ -69,7 +75,7 @@ void wifi_init()
 void coordinator_connect(uint8_t *mac)
 {
     esp_now_peer_info_t peer = {0};
-    peer.channel = 0;
+    peer.channel = 1;
     peer.encrypt = false;
     memcpy(peer.peer_addr, mac, 6*sizeof(uint8_t));
     ESP_ERROR_CHECK(esp_now_add_peer(&peer));
