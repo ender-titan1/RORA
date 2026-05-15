@@ -515,10 +515,10 @@ void demo_motion(mp_motion_planner_t *planner)
     // REMEMBER: Curves are stored per-conrtoller, so you have to pass in a new cfg even
     // when reusing the same curve when it's on a different controller
     
-    // Compile: ID 1 |     base |  90 deg |  CW | new curve (1s; 0.2s a/d) (normal)
-    compile_command(planner, 1, 1, DEMO_NORMAL, 0, 90, CW, &cfg);
-    // Compile: ID 3 |     base | 180 deg | CCW | normal curve
-    compile_command(planner, 1, 3, DEMO_NORMAL, 0, 180, CCW, NULL);
+    // Compile: ID 1 |    elbow |  90 deg |  CW | new curve (1s; 0.2s a/d) (normal)
+    compile_command(planner, 0, 1, DEMO_NORMAL, 1, 90, CW, &cfg);
+    // Compile: ID 3 |    elbow | 180 deg | CCW | normal curve
+    compile_command(planner, 0, 3, DEMO_NORMAL, 1, 180, CCW, NULL);
     
     cfg.duration_s = 0.75;
     cfg.accel_time_s = 0.15,
@@ -533,7 +533,7 @@ void demo_motion(mp_motion_planner_t *planner)
     mp_linked_motion_t *motions = malloc(sizeof(mp_linked_motion_t) * 4);
     generate_empty_motion(motions, 4); 
     
-    // Synched move of base (90 CW normal) and shoulder (45 CCW fast)
+    // Synched move of elbow (90 CW normal) and shoulder (45 CCW fast)
     mp_linked_motion_t *m0 = &motions[0];
     m0->command_ids[0] = 1;
     m0->command_ids[1] = 2;
@@ -545,7 +545,7 @@ void demo_motion(mp_motion_planner_t *planner)
     m1->overrides_direction[0] = CW;
     m1->count = 1;
     
-    // Synched move of base (180 CCW normal) and shoulder (30 CCW normal)
+    // Synched move of elbow (180 CCW normal) and shoulder (30 CCW normal)
     mp_linked_motion_t *m2 = &motions[2];
     m2->command_ids[0] = 3;
     m2->command_ids[1] = 4;

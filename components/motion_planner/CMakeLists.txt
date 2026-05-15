@@ -1,6 +1,5 @@
 idf_component_register(
     SRCS "motion_planner.c"
     INCLUDE_DIRS "include"
-    REQUIRES "drv8825"
-    REQUIRES "coordinator"
+    REQUIRES "drv8825" "coordinator"
 )

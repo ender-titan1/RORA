@@ -7,7 +7,7 @@
 #define TCP_PORT 3333
 
 static const char *TAG = "core_main";
-static uint8_t sat_mac[6] = { 0xEC, 0xE3, 0x34, 0x1A, 0xE8, 0x00 };
+static uint8_t sat_mac[6] = { 0x00, 0x40, 0x0A, 0x3C, 0xE4, 0x4B };
 static mp_movement_curve_t curves[3] = {0};
 static drv8825_command_t commands[3] = {0};
 
@@ -28,6 +28,23 @@ static mp_joint_t shoulder = {
     .pinion_teeth = 35,
     .output_teeth = 70,
     .disable_by_default = false
+};
+
+static drv8825_t elbow_motor_nema17 = {
+    .pinSTEP = M2_STEP,
+    .pinDIR = M2_DIR,
+    .pinEN = M2_EN,
+    .stepsPerRotation = 200 * 32,
+    .activeLow = false,
+    .channelRMT = NULL,
+    .encoderRMT = NULL,
+};
+
+static mp_joint_t elbow = {
+    .motor = &elbow_motor_nema17,
+    .pinion_teeth = 25,
+    .output_teeth = 45,
+    .disable_by_default = false,
 };
 
 static void tcp_server_task(void *arg)
@@ -172,6 +189,10 @@ static void pc_command_task(void *arg)
 
 void core_main()
 {
+    // uint8_t mac[6];
+    // esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
+    // ESP_LOGI(TAG, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
     wifi_init();
     pc_cmd_queue = xQueueCreate(8, sizeof(pc_command_t));
     xTaskCreate(pc_command_task, "pc_command", 4096, NULL, 4, NULL);
@@ -181,12 +202,17 @@ void core_main()
     attach_motor(&shoulder_motor_nema23);
     disable_motor(&shoulder_motor_nema23);
 
+    attach_motor(&elbow_motor_nema17);
+    disable_motor(&elbow_motor_nema17);
+
     if (!sat_handshake(sat_mac))
         return;
 
-    mp_motion_planner_t *planner = init_motion_planner(16, 8, 1);
+    mp_motion_planner_t *planner = init_motion_planner(16, 8, 2);
     planner->core_buffers->joints[0] = shoulder;
+    planner->core_buffers->joints[1] = elbow;
     memcpy(planner->satellite_addrs[0], sat_mac, sizeof(uint8_t) * MAC_ADDR_LEN);
+    
     demo_motion(planner);
     execute_motion_globally(planner);
 

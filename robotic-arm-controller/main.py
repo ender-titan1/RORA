@@ -1,8 +1,9 @@
 from enum import IntEnum
+from dataclasses import dataclass
+from typing import List
 from tui import *
 from menus import *
 import socket
-import struct
 
 class Direction(IntEnum):
     CW = 1
@@ -20,15 +21,18 @@ class EaseType(IntEnum):
     SINE = 1
     CUBIC = 2
 
-class DirectionOverride(IntEnum):
-    NONE = 0xFF
-    CW = 0
-    CCW = 1
+@dataclass
+class Motion:
+    submotions: List[Submotion]
+    delay: float
 
-class DisableOverride(IntEnum):
-    NONE = 0xFF
-    DISABLE = 1
-    KEEP_ENABLED = 0
+@dataclass
+class Submotion:
+    joint: int
+    profile: int
+    degrees: float
+    ease: EaseType
+    direction: Direction
 
 CURVE_CMD_STRUCT_FMT = '<BBBBBBffff'
 COMPUTE_CMD_STRUCT_FMT = '<BBBBBfB'
@@ -43,6 +47,8 @@ s = socket.socket()
 s.connect(('192.168.4.1', 3333))
 print("Connected to RORA")
 getch()
+
+current_motion = None
 
 #-------------TUI Components-------------
 blank = Label("")
@@ -66,7 +72,7 @@ add_submotion = ButtonOption("Add Submotion", lambda ctx: ctx.manager.goto("subm
 hold_for = TextInputOption("Hold for s", 0.2, NUMBER_REGEX)
 delete_motion = ButtonOption("Delete", )
 
-# Submiotion
+# Submotion
 joint = DropdownOption("Joint", ["Base", "Shoulder", "Elbow"], 0)
 profile = SliderOption("Profile", 1, 8, False, display_val=True)
 degrees = TextInputOption("Degrees", 45, NUMBER_REGEX)
@@ -151,6 +157,10 @@ def update_motor(ctx):
     motor.set_option(0 if controller.current == "Core" else 1) """
 
 confirm = ButtonOption("Confirm", )
+
+def motion_dynamic_gen():
+    for submotion in current_motion.submotions:
+
 
 #-------------TUI Menus-------------
 
