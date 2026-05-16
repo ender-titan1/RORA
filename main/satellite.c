@@ -9,9 +9,9 @@ static uint8_t core_mac[6] = { 0xAC, 0xA7, 0x04, 0x2C, 0x59, 0x28 };
 static controller_specific_buffers_t *buffers;
 
 static drv8825_t base_motor_nema17 = {
-    .pinSTEP = GPIO_NUM_2,
-    .pinDIR = GPIO_NUM_1,
-    .pinEN = GPIO_NUM_3,
+    .pinSTEP = GPIO_NUM_3,
+    .pinDIR = GPIO_NUM_2,
+    .pinEN = GPIO_NUM_4,
     .stepsPerRotation = 200 * 32,
     .activeLow = true,
     .channelRMT = NULL,
@@ -79,10 +79,6 @@ static void sat_cmd_exec(data_frame_t *cmd, uint8_t len)
 
 void sat_main()
 {
-    uint8_t mac[6];
-    esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
-    ESP_LOGI(TAG, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
     wifi_init();
     coordinator_connect(core_mac);
 

@@ -3,8 +3,7 @@
 #include "drv8825.h"
 #include "esp_log.h"
 
-static const char* TAG = "DRV8825";
-static const char* SYNC_TAG = "DRV8825|SYNC";
+static const char* TAG = "drv8825";
 
 size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbols_written, size_t symbols_free, rmt_symbol_word_t *symbols, bool *done, void *arg)
 {
@@ -53,10 +52,14 @@ size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbol
 void attach_motor(drv8825_t* motor)
 {
     ESP_LOGI(TAG, "Attaching motor...");
+    gpio_reset_pin(motor->pinDIR);
+    gpio_set_pull_mode(motor->pinDIR, GPIO_PULLDOWN_ONLY);
     gpio_set_direction(motor->pinDIR, GPIO_MODE_OUTPUT);
     gpio_set_level(motor->pinDIR, 0);
     ESP_LOGI(TAG, "DIR pin set: %d", motor->pinDIR);
 
+    gpio_reset_pin(motor->pinEN);
+    gpio_set_pull_mode(motor->pinEN, GPIO_FLOATING);
     gpio_set_direction(motor->pinEN, GPIO_MODE_OUTPUT);
     gpio_set_level(motor->pinEN, motor->activeLow);
     ESP_LOGI(TAG, "EN pin set: %d", motor->pinEN);
@@ -106,6 +109,7 @@ uint16_t prepare(drv8825_command_t *command, const char* tag)
 
     gpio_set_level(motor->pinDIR, (uint8_t)command->direction);
     gpio_set_level(motor->pinEN, motor->activeLow ? 0 : 1);
+
     vTaskDelay(pdMS_TO_TICKS(3));
 
     return steps;
@@ -142,8 +146,8 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
     if (count == 0)
         return;
     
-    ESP_LOGI(TAG, "SYNC EXECUTE BEGIN");
-    ESP_LOGI(SYNC_TAG, "%d commands issued", count);
+    ESP_LOGI(TAG, "Begin Sync Execute");
+    ESP_LOGI(TAG, "%d commands issued", count);
     
     // Run a check to make sure the same motor is not getting multiple commands
     uint8_t step_pins[count];
@@ -154,8 +158,8 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
         {
             if (step == step_pins[j])
             {
-                ESP_LOGE(SYNC_TAG, "Multiple commands issued for motor with STEP pin %d", step);
-                ESP_LOGE(SYNC_TAG, "Aborting sync execute!");
+                ESP_LOGE(TAG, "Multiple commands issued for motor with STEP pin %d", step);
+                ESP_LOGE(TAG, "Aborting sync execute!");
                 return;
             }
         }
@@ -163,13 +167,13 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
         step_pins[i] = step;
     }
 
-    ESP_LOGI(SYNC_TAG, "Preparing commands");
+    ESP_LOGI(TAG, "Preparing commands");
 
     rmt_stepper_loop_encoder_data_t* data = calloc(count, sizeof(rmt_stepper_loop_encoder_data_t));
     for (uint8_t i = 0; i < count; i++)
     {
         drv8825_command_t command = commands[i];
-        uint16_t steps = prepare(&command, SYNC_TAG);
+        uint16_t steps = prepare(&command, TAG);  
 
         rmt_stepper_loop_encoder_data_t d = {
             .pulse = command.pulse,
@@ -177,10 +181,10 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
         };
         data[i] = d;
 
-        ESP_LOGI(SYNC_TAG, "Command: [STEP pin|%d] [Steps|%d]", command.motor->pinSTEP, steps);
+        ESP_LOGI(TAG, "Command: [STEP# %d] [Steps %d]", command.motor->pinSTEP, steps);
     }
 
-    ESP_LOGI(SYNC_TAG, "Beginning transmission");
+    ESP_LOGI(TAG, "Beginning transmission");
 
     rmt_transmit_config_t c = {
         .flags.eot_level = 0
@@ -199,7 +203,7 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
 
     free(data);
 
-    ESP_LOGI(SYNC_TAG, "Transmission completed succesfully!");
+    ESP_LOGI(TAG, "Transmission completed succesfully!");
 
     // Make sure we disable the motor after the move
     for (uint8_t i = 0; i < count; i++)

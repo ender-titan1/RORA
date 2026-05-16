@@ -10,6 +10,12 @@
 #define DEMO_NORMAL 0
 #define DEMO_SLOW 2
 
+#define ON_CTRL_CORE 0
+#define ON_CTRL_SAT 1
+#define J_WAIST 0
+#define J_SHOULDER 0
+#define J_ELBOW 1
+
 #define MAX(a, b) (a > b ? a : b)
 
 static const char* TAG = "motion_planner";
@@ -218,7 +224,12 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
         break;
     }
 
-    size_t max_points = (size_t)(cfg->duration_s / cfg->resolution) + 2;
+    double hold_time = cfg->duration_s - (cfg->accel_time_s + cfg->decel_time_s);
+    size_t accel_n = (size_t)ceil(cfg->accel_time_s / cfg->resolution) + 1;
+    size_t hold_n  = (size_t)ceil(hold_time / cfg->resolution) + 1;
+    size_t decel_n = (size_t)ceil(cfg->decel_time_s / cfg->resolution) + 1;
+
+    size_t max_points = accel_n + hold_n + decel_n;
     double *points = malloc(max_points * sizeof(double));
     uint16_t i = 0;
 
@@ -234,8 +245,7 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
 
     //ESP_LOGI(TAG, "HOLD");
 
-    // Hold
-    double hold_time = cfg->duration_s - (cfg->accel_time_s + cfg->decel_time_s);
+    // HOLD
     for (double t = 0.0; t < (hold_time + EPSILON); t += cfg->resolution)
     {
         points[i] = 1.0;
@@ -252,7 +262,7 @@ void create_eased_movement_curve(mp_movement_curve_config_t *cfg, mp_movement_cu
         //ESP_LOGI(TAG, "%d| %f: %f", i, t, points[i]);
         i++;
     }
-
+ 
     curve->cfg = malloc(sizeof(mp_movement_curve_config_t));
     *curve->cfg = *cfg;
     curve->n_points = i;
@@ -442,8 +452,6 @@ void execute_local_commands_in_motion(mp_linked_motion_t *motion, controller_spe
     uint8_t count = 0;
     for (size_t i = 0; i < motion->count; i++)
     {
-        drv8825_command_t cmd = bufs->commands[motion->command_ids[i]];
-
         for (size_t j = 0; j < bufs->local_commands_size; j++)
         {
             // Skip check if current value is 0, as that just means no data is present
@@ -516,19 +524,24 @@ void demo_motion(mp_motion_planner_t *planner)
     // when reusing the same curve when it's on a different controller
     
     // Compile: ID 1 |    elbow |  90 deg |  CW | new curve (1s; 0.2s a/d) (normal)
-    compile_command(planner, 0, 1, DEMO_NORMAL, 1, 90, CW, &cfg);
+    compile_command(planner, ON_CTRL_CORE, 1, DEMO_NORMAL, J_ELBOW, 90, CW, &cfg);
     // Compile: ID 3 |    elbow | 180 deg | CCW | normal curve
-    compile_command(planner, 0, 3, DEMO_NORMAL, 1, 180, CCW, NULL);
+    compile_command(planner, ON_CTRL_CORE, 3, DEMO_NORMAL, J_ELBOW, 180, CCW, NULL);
+
+    // Compile: ID 5 |    waist |  60 deg |  CW | normal curve
+    compile_command(planner, ON_CTRL_SAT, 5, DEMO_NORMAL, J_WAIST, 60, CW, &cfg);
     
     cfg.duration_s = 0.75;
     cfg.accel_time_s = 0.15,
     cfg.decel_time_s = 0.15;
     
     // Compile: ID 2 | shoulder |  45 deg | CCW | new curve (0.75s, 0.15s a/d) (fast)
-    compile_command(planner, 0, 2, DEMO_FAST, 0, 45, CCW, &cfg);
+    compile_command(planner, ON_CTRL_CORE, 2, DEMO_FAST, J_SHOULDER, 45, CCW, &cfg);
     // Compile: ID 4 | shoulder |  30 deg | CCW | fast curve
-    compile_command(planner, 0, 4, DEMO_FAST, 0, 30, CCW, NULL);
-    
+    compile_command(planner, ON_CTRL_CORE, 4, DEMO_FAST, J_SHOULDER, 30, CCW, NULL);
+
+    // Compile: ID 6 |    waist | 120 deg | CCW | fast curve
+    compile_command(planner, ON_CTRL_SAT, 6, DEMO_FAST, J_WAIST, 120, CCW, &cfg);
 
     mp_linked_motion_t *motions = malloc(sizeof(mp_linked_motion_t) * 4);
     generate_empty_motion(motions, 4); 
@@ -539,11 +552,12 @@ void demo_motion(mp_motion_planner_t *planner)
     m0->command_ids[1] = 2;
     m0->count = 2;
     
-    // Move of shoulder with overriden direction (45 CW fast)
+    // Synched move of shoulder with overriden direction (45 CW fast) and waist (60 CW normal)
     mp_linked_motion_t *m1 = &motions[1];
     m1->command_ids[0] = 2;
     m1->overrides_direction[0] = CW;
-    m1->count = 1;
+    m1->command_ids[1] = 5;
+    m1->count = 2;
     
     // Synched move of elbow (180 CCW normal) and shoulder (30 CCW normal)
     mp_linked_motion_t *m2 = &motions[2];
@@ -551,10 +565,12 @@ void demo_motion(mp_motion_planner_t *planner)
     m2->command_ids[1] = 4;
     m2->count = 2;
 
+    // Synched move of shoulder with overriden direction (30 CW normal) and waist (120 CCW fast)
     mp_linked_motion_t *m3 = &motions[3];
     m3->command_ids[0] = 4;
     m3->overrides_direction[0] = CW;
-    m3->count = 1;
+    m3->command_ids[1] = 6;
+    m3->count = 2;
 
     planner->motion = &motions[0];
 }
