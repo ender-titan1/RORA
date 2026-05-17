@@ -16,6 +16,11 @@ typedef enum {
 } control_mode_t;
 
 typedef enum {
+    POSITION_DRIVEN,
+    VELOCITY_DRIVEN
+} integrator_mode_t;
+
+typedef enum {
     FALSE = 0x00,
     TRUE = 0x01,
     NO_OVERRIDE = 0xFF,
@@ -92,14 +97,14 @@ typedef struct {
 } rmt_stepper_loop_encoder_data_t;
 
 void attach_motor(drv8825_t *motor);
-void set_control_mode(control_mode_t mode);
+void drv8825_set_control_mode(control_mode_t mode);
 void detach_motor(drv8825_t *motor);
 
 // ===== REALTIME MODE =====
 void tx_buf_push(drv8825_t *motor, uint16_t pulse_time_us);
 bool tx_buf_pop(drv8825_t *motor, uint16_t *out);
-void integrate_and_update_motor_state(drv8825_t *motor, float dt_s);
-void fill_tx_buffer(drv8825_t *motor);
+void integrate_and_update_motor_state(drv8825_t *motor, integrator_mode_t mode, float dt_s);
+void fill_tx_buffer(drv8825_t *motor, integrator_mode_t mode);
 
 // ===== OFFLINE MODE =====
 uint16_t prepare(drv8825_command_t *command, const char* tag);

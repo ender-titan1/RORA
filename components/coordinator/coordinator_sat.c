@@ -6,11 +6,6 @@ static const char *TAG = "coordinator";
 
 static QueueHandle_t sat_cmd_queue;
 
-static sat_callback_func curve_callback;
-static sat_callback_func compute_callback;
-static sat_callback_func exec_callback;
-static sat_callback_func cleanup_callback;
-
 static void sat_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
     if (len != sizeof(data_frame_t))
@@ -24,8 +19,6 @@ static void sat_on_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
 
     uint8_t generated_crc = crc8_gen(data, len - 1);
     uint8_t original_crc = cmd.crc;
-
-    ESP_LOGI(TAG, "%02x/%02x", original_crc, generated_crc);
 
     if (generated_crc != original_crc)
     {
@@ -72,17 +65,17 @@ static void sat_command_task(void *arg)
 
             switch (cmd.command)
             {
-            case CMD_MP_CURVE:
-                curve_callback(&cmd, len);
+            case CMD_CONFIGURE:
+                coordinator_configure_callback(&cmd, len);
                 break;
-            case CMD_MP_COMPUTE:
-                compute_callback(&cmd, len);
+            case CMD_OFFLINE_MP_CURVE:
+                coordinator_curve_callback(&cmd, len);
                 break;
-            case CMD_EXECUTE:
-                exec_callback(&cmd, len);
+            case CMD_OFFLINE_MP_COMPUTE:
+                coordinator_compute_callback(&cmd, len);
                 break;
-            case CMD_CLEANUP:
-                cleanup_callback(&cmd, len);
+            case CMD_OFFLINE_EXECUTE:
+                coordinator_exec_callback(&cmd, len);
                 break;
             case CMD_HANDSHAKE:
                 ESP_LOGI(TAG, "Handshake command received. Responding.");
@@ -104,12 +97,4 @@ void sat_init()
 
     esp_now_register_recv_cb(sat_on_recv_cb);
     ESP_LOGI(TAG, "Initialized device as SAT");
-}
-
-void bind_cmd_callbacks(sat_callback_func curve_cb, sat_callback_func compute_cb, sat_callback_func exec_cb, sat_callback_func cleanup_cb)
-{
-    curve_callback = curve_cb;
-    compute_callback = compute_cb;
-    exec_callback = exec_cb;
-    cleanup_callback = cleanup_cb;
 }

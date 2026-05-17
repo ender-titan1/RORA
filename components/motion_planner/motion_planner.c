@@ -16,8 +16,6 @@
 #define J_SHOULDER 0
 #define J_ELBOW 1
 
-#define MAX(a, b) (a > b ? a : b)
-
 static const char* TAG = "motion_planner";
 
 int compare_remainders_desc_cb(const void *a, const void *b)
@@ -36,7 +34,7 @@ int compare_remainders_desc_cb(const void *a, const void *b)
 
 bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
 {
-    mp_joint_t *joint = cmd->joint;
+    joint_t *joint = cmd->joint;
     float gear_ratio = ((float)joint->output_teeth)/((float)joint->pinion_teeth); // How many times the motor has to rotate to rotate the joint 360 degrees
     float motor_degrees = ((float)cmd->degrees) * gear_ratio;
     uint8_t dir = (cmd->direction == CW) ? CCW : CW;
@@ -342,7 +340,7 @@ void init_buffers(controller_specific_buffers_t *bufs, size_t command_buf_size, 
 {
     bufs->commands = malloc(sizeof(drv8825_command_t) * command_buf_size);
     bufs->curves = malloc(sizeof(mp_movement_curve_t) * curve_buf_size);
-    bufs->joints = malloc(sizeof(mp_joint_t) * joint_buf_size);
+    bufs->joints = malloc(sizeof(joint_t) * joint_buf_size);
     bufs->local_commands = malloc(sizeof(uint8_t) * command_buf_size);
 
     bufs->command_buf_size = command_buf_size;
@@ -414,7 +412,7 @@ void compile_command(mp_motion_planner_t *planner, size_t on_controller, size_t 
     {
         ESP_LOGI(TAG, "Command compilation will override curve id %i", curve_id);
         data_frame_t frame = {
-            .command = CMD_MP_CURVE,
+            .command = CMD_OFFLINE_MP_CURVE,
         };
         mp_curve_command_payload_t payload = {
             .curve_id = curve_id,
@@ -429,7 +427,7 @@ void compile_command(mp_motion_planner_t *planner, size_t on_controller, size_t 
     }
 
     data_frame_t frame = {
-        .command = CMD_MP_COMPUTE,
+        .command = CMD_OFFLINE_MP_COMPUTE,
     };
     mp_joint_command_payload_t payload = {
         .command_id = output_id,
@@ -490,7 +488,7 @@ void execute_motion_globally(mp_motion_planner_t *planner)
     {
         // Send EXECUTE commands to all satellites
         data_frame_t frame = {
-            .command = CMD_EXECUTE,
+            .command = CMD_OFFLINE_EXECUTE,
         };
         memcpy(&frame.payload, cur, sizeof(mp_linked_motion_t));
         for (size_t j = 0; j < MAX_SATELLITES; j++)

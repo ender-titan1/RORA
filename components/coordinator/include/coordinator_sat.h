@@ -9,5 +9,9 @@ typedef struct {
     uint8_t mac[MAC_ADDR_LEN];
 } queued_data_frame_t;
 
+sat_callback_func coordinator_configure_callback;
+sat_callback_func coordinator_curve_callback;
+sat_callback_func coordinator_compute_callback;
+sat_callback_func coordinator_exec_callback;
+
 void sat_init();
-void bind_cmd_callbacks(sat_callback_func curve_cb, sat_callback_func compute_cb, sat_callback_func exec_cb, sat_callback_func cleanup_cb);

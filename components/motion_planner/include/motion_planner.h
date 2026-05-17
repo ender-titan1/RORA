@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drv8825.h"
+#include "common.h"
 
 #define MOTION_MAX_COUNT 8
 #define MAX_SATELLITES 4
@@ -19,13 +20,6 @@ typedef enum {
 
 typedef double (*mp_easing_func_t)(double, double, mp_accel_type_t);
 
-typedef struct {
-    drv8825_t *motor;
-    uint16_t pinion_teeth;
-    uint16_t output_teeth;
-    bool disable_by_default;
-} mp_joint_t;
-
 typedef struct __attribute__((packed)) {
     uint8_t ease_type;
     float accel_time_s;
@@ -41,7 +35,7 @@ typedef struct {
 } mp_movement_curve_t;
 
 typedef struct {
-    mp_joint_t *joint;
+    joint_t *joint;
     int degrees;
     float duration_s;
     uint8_t direction;
@@ -56,7 +50,7 @@ typedef struct {
 typedef struct {
     mp_movement_curve_t *curves;
     drv8825_command_t *commands;
-    mp_joint_t *joints;
+    joint_t *joints;
     uint8_t *local_commands;
         
     size_t curve_buf_size;

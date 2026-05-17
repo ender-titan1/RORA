@@ -6,10 +6,11 @@
 #include "motion_planner.h"
 
 #define CMD_HANDSHAKE 0xF0
-#define CMD_MP_CURVE 0xA0
-#define CMD_MP_COMPUTE 0xB0
-#define CMD_EXECUTE 0x01
-#define CMD_CLEANUP 0xFF
+#define CMD_CONFIGURE 0xC0
+
+#define CMD_OFFLINE_MP_CURVE 0xA0
+#define CMD_OFFLINE_MP_COMPUTE 0xB0
+#define CMD_OFFLINE_EXECUTE 0x01
 
 #define ACK 0x06
 #define NACK 0x15
@@ -37,4 +38,3 @@ void wifi_init();
 void coordinator_connect(uint8_t *mac);
 void transmit_frame(uint8_t *mac, data_frame_t *frame);
 uint8_t crc8_gen(const uint8_t *data, uint8_t len);
-

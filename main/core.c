@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "lwip/sockets.h"
 #include "freertos/FreeRTOS.h"
+#include "control_system.h"
 #include <string.h>
 
 #define TCP_PORT 3333
@@ -23,7 +24,7 @@ static drv8825_t shoulder_motor_nema23 = {
     .rmt_encoder = NULL,
 };
 
-static mp_joint_t shoulder = {
+static joint_t shoulder = {
     .motor = &shoulder_motor_nema23,
     .pinion_teeth = 35,
     .output_teeth = 70,
@@ -40,13 +41,14 @@ static drv8825_t elbow_motor_nema17 = {
     .rmt_encoder = NULL,
 };
 
-static mp_joint_t elbow = {
+static joint_t elbow = {
     .motor = &elbow_motor_nema17,
     .pinion_teeth = 25,
     .output_teeth = 45,
     .disable_by_default = false,
 };
 
+/*
 static void tcp_server_task(void *arg)
 {
     int listen_sock, client_sock;
@@ -104,7 +106,7 @@ static void pc_command_task(void *arg)
         {
             uint8_t target_slot = cmd.payload.slot;
             uint8_t src_slot = cmd.payload.src_slot;
-            mp_joint_t *joint = NULL;
+            joint_t *joint = NULL;
 
             switch (cmd.payload.motor)
             {
@@ -121,7 +123,7 @@ static void pc_command_task(void *arg)
                 if (cmd.payload.controller == 1)
                 {
                     data_frame_t frame = {
-                        .command = CMD_MP_CURVE,
+                        .command = CMD_OFFLINE_MP_CURVE,
                     };
                     memcpy(&frame.payload, &cmd.payload.curve_cfg, sizeof(mp_movement_curve_config_t));
                     transmit_frame(sat_mac, &frame);
@@ -145,7 +147,7 @@ static void pc_command_task(void *arg)
                 if (cmd.payload.controller == 1)
                 {
                     data_frame_t frame = {
-                        .command = CMD_MP_COMPUTE,
+                        .command = CMD_OFFLINE_MP_COMPUTE,
                     };
                     memcpy(&frame.payload, &cmd.payload.compute_cfg, sizeof(mp_joint_command_payload_t));
                     transmit_frame(sat_mac, &frame);
@@ -168,7 +170,7 @@ static void pc_command_task(void *arg)
                 if (cmd.payload.controller == 1)
                 {
                     data_frame_t frame = {
-                        .command = CMD_EXECUTE,
+                        .command = CMD_OFFLINE_EXECUTE,
                     };
                     memcpy(&frame.payload, &cmd.payload.exec_cfg, sizeof(execute_overrides_t));
                     transmit_frame(sat_mac, &frame);
@@ -186,35 +188,30 @@ static void pc_command_task(void *arg)
         }
     }
 }
+*/
 
 void core_main()
 {
-    wifi_init();
     pc_cmd_queue = xQueueCreate(8, sizeof(pc_command_t));
-    xTaskCreate(pc_command_task, "pc_command", 4096, NULL, 4, NULL);
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
+    //xTaskCreate(pc_command_task, "pc_command", 4096, NULL, 4, NULL);
+    //xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
+
+    wifi_init();
     coordinator_connect(sat_mac);
 
-    attach_motor(&shoulder_motor_nema23);
-    disable_motor(&shoulder_motor_nema23);
+    control_system_t controller = {0};
+    joint_t joints[2] = {
+        shoulder,
+        elbow
+    };
+    init_control_system(&controller, sat_mac, OFFLINE, 0, joints, 2); 
 
-    attach_motor(&elbow_motor_nema17);
-    disable_motor(&elbow_motor_nema17);
-
-    if (!sat_handshake(sat_mac))
-        return;
-
-    mp_motion_planner_t *planner = init_motion_planner(16, 8, 2);
-    planner->core_buffers->joints[0] = shoulder;
-    planner->core_buffers->joints[1] = elbow;
-    memcpy(planner->satellite_addrs[0], sat_mac, sizeof(uint8_t) * MAC_ADDR_LEN);
-    
-    demo_motion(planner);
-    execute_motion_globally(planner);
+    demo_motion(controller.used_system.motion_planner);
+    execute_motion_globally(controller.used_system.motion_planner);
 
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        execute_motion_globally(planner);
+        execute_motion_globally(controller.used_system.motion_planner);
     }
 
     return;

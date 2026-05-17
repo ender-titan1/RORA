@@ -21,7 +21,7 @@ static size_t rmt_stepper_realtime_encode(const void *data, size_t data_size, si
     size_t written = 0;
     while (written < symbols_free) 
     {
-        // Never set *done, as the transmission must be continuous for RT control, instead keep sending idle symbols
+        // Never set *done, as the transmission must be continuous for RT control. Instead, keep sending idle symbols
         if (motor->rt_buffer.count == 0) 
         {
             symbols[written++] = (rmt_symbol_word_t){
@@ -151,7 +151,7 @@ void attach_motor(drv8825_t* motor)
     ESP_LOGI(TAG, "Motor succesfully attached!");
 }
 
-void set_control_mode(control_mode_t mode)
+void drv8825_set_control_mode(control_mode_t mode)
 {
     control_mode = mode;
 }
@@ -200,7 +200,7 @@ bool tx_buf_pop(drv8825_t *motor, uint16_t *out)
     return true;
 }
 
-void integrate_and_update_motor_state(drv8825_t *motor, float dt_s)
+void integrate_and_update_motor_state(drv8825_t *motor, integrator_mode_t mode, float dt_s)
 {
     drv8825_rt_motor_state_t *rt_state = &motor->rt_state;
 
@@ -214,15 +214,24 @@ void integrate_and_update_motor_state(drv8825_t *motor, float dt_s)
 
     float direction = (error > 0) ? 1.0f : -1.0f;
 
-    float vel_desired = direction * rt_state->target_velocity;
+    float vel_desired;
     float max_delta_v = rt_state->acceleration * dt_s;
-    
-    // D = v^2/2a
-    float stopping_dist = (rt_state->current_velocity * rt_state->current_velocity) / (2.0f * rt_state->acceleration);
-    
-    // Start braking if at or within stopping range
-    if (fabsf(error) <= stopping_dist)
-        vel_desired = 0;
+
+    if (mode == POSITION_DRIVEN)
+    {
+        vel_desired = direction * rt_state->target_velocity;
+
+        // D = v^2/2a
+        float stopping_dist = (rt_state->current_velocity * rt_state->current_velocity) / (2.0f * rt_state->acceleration);
+        
+        // Start braking if at or within stopping range
+        if (fabsf(error) <= stopping_dist)
+            vel_desired = 0;
+    } 
+    else 
+    {
+        vel_desired = rt_state->target_velocity;
+    }
 
     float vel_error   = vel_desired - rt_state->current_velocity;
 
@@ -233,8 +242,14 @@ void integrate_and_update_motor_state(drv8825_t *motor, float dt_s)
     rt_state->current_velocity += vel_error;
 }
 
-void fill_tx_buffer(drv8825_t* motor)
+void fill_tx_buffer(drv8825_t* motor, integrator_mode_t mode)
 {
+    if (control_mode != REALTIME)
+    {
+        ESP_LOGE(TAG, "Attempted to used realtime stepper API in offline mode");
+        return; 
+    }
+
     drv8825_rt_motor_state_t *rt_state = &motor->rt_state;
 
     while (RT_TX_BUF_SIZE - motor->rt_buffer.count > 0)
@@ -244,7 +259,7 @@ void fill_tx_buffer(drv8825_t* motor)
         if (error == 0)
             return;
 
-        integrate_and_update_motor_state(motor, rt_state->update_interval_us / 1e6f);
+        integrate_and_update_motor_state(motor, mode, rt_state->update_interval_us / 1e6f);
 
         float abs_speed = fabsf(rt_state->current_velocity);
 
