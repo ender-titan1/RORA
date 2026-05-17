@@ -2,10 +2,51 @@
 #include "freertos/FreeRTOS.h"
 #include "drv8825.h"
 #include "esp_log.h"
+#include "math.h"
 
 static const char* TAG = "drv8825";
 
-size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbols_written, size_t symbols_free, rmt_symbol_word_t *symbols, bool *done, void *arg)
+static control_mode_t control_mode = OFFLINE;
+
+static size_t rmt_stepper_realtime_encode(const void *data, size_t data_size, size_t symbols_written, size_t symbols_free, rmt_symbol_word_t *symbols, bool *done, void *arg)
+{
+    // No space to write pulses
+    if (symbols_free == 0)
+    {
+        return 0;
+    }
+
+    drv8825_t *motor = (drv8825_t*)data;
+
+    size_t written = 0;
+    while (written < symbols_free) 
+    {
+        // Never set *done, as the transmission must be continuous for RT control, instead keep sending idle symbols
+        if (motor->rt_buffer.count == 0) 
+        {
+            symbols[written++] = (rmt_symbol_word_t){
+                .level0 = 0,
+                .duration0 = RT_RMT_IDLE_SYMBOL_DURATION_US / 2,
+                .level1 = 0,
+                .duration1 = RT_RMT_IDLE_SYMBOL_DURATION_US / 2
+            };
+            continue;
+        }
+
+        uint16_t pulse_time_us = 0;
+        tx_buf_pop(motor, &pulse_time_us);
+        symbols[written++] = (rmt_symbol_word_t){
+            .level0 = 0,
+            .duration0 = RT_RMT_SYMBOL_LOW_DURATION_US,
+            .level1 = 1,
+            .duration1 = pulse_time_us - RT_RMT_SYMBOL_LOW_DURATION_US
+        };
+    }
+
+    return written;
+}
+
+static size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbols_written, size_t symbols_free, rmt_symbol_word_t *symbols, bool *done, void *arg)
 {
     // No space to write pulses
     if (symbols_free == 0)
@@ -48,26 +89,25 @@ size_t rmt_stepper_loop_encode(const void *data, size_t data_size, size_t symbol
     return symbols_to_write;
 }
 
-
 void attach_motor(drv8825_t* motor)
 {
     ESP_LOGI(TAG, "Attaching motor...");
-    gpio_reset_pin(motor->pinDIR);
-    gpio_set_pull_mode(motor->pinDIR, GPIO_PULLDOWN_ONLY);
-    gpio_set_direction(motor->pinDIR, GPIO_MODE_OUTPUT);
-    gpio_set_level(motor->pinDIR, 0);
-    ESP_LOGI(TAG, "DIR pin set: %d", motor->pinDIR);
+    gpio_reset_pin(motor->pin_DIR);
+    gpio_set_pull_mode(motor->pin_DIR, GPIO_PULLDOWN_ONLY);
+    gpio_set_direction(motor->pin_DIR, GPIO_MODE_OUTPUT);
+    gpio_set_level(motor->pin_DIR, 0);
+    ESP_LOGI(TAG, "DIR pin set: %d", motor->pin_DIR);
 
-    gpio_reset_pin(motor->pinEN);
-    gpio_set_pull_mode(motor->pinEN, GPIO_FLOATING);
-    gpio_set_direction(motor->pinEN, GPIO_MODE_OUTPUT);
-    gpio_set_level(motor->pinEN, motor->activeLow);
-    ESP_LOGI(TAG, "EN pin set: %d", motor->pinEN);
+    gpio_reset_pin(motor->pin_EN);
+    gpio_set_pull_mode(motor->pin_EN, GPIO_FLOATING);
+    gpio_set_direction(motor->pin_EN, GPIO_MODE_OUTPUT);
+    gpio_set_level(motor->pin_EN, motor->active_low);
+    ESP_LOGI(TAG, "EN pin set: %d", motor->pin_EN);
 
-    ESP_LOGI(TAG, "Initializing RMT channel at STEP pin %d", motor->pinSTEP);
+    ESP_LOGI(TAG, "Initializing RMT channel at STEP pin %d", motor->pin_STEP);
 
     rmt_tx_channel_config_t tx_config = {
-        .gpio_num = motor->pinSTEP,
+        .gpio_num = motor->pin_STEP,
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .mem_block_symbols = 64,
         .resolution_hz = 1 * 1000 * 1000,
@@ -76,39 +116,161 @@ void attach_motor(drv8825_t* motor)
         .flags.with_dma = false,
     };
 
-    rmt_new_tx_channel(&tx_config, &motor->channelRMT);
+    rmt_new_tx_channel(&tx_config, &motor->rmt_channel);
 
-    rmt_simple_encoder_config_t encoder_config = {
-        .callback = rmt_stepper_loop_encode,
-        .min_chunk_size = 10
-    };
-    rmt_new_simple_encoder(&encoder_config, &motor->encoderRMT);
+    ESP_LOGI(TAG, "Initializing encoder for mode: %s", control_mode == OFFLINE ? "OFFLINE" : "REALTIME");
 
-    rmt_enable(motor->channelRMT);
+    if (control_mode == OFFLINE) {
+        rmt_simple_encoder_config_t encoder_config = {
+            .callback = rmt_stepper_loop_encode,
+            .min_chunk_size = 10
+        };
+        rmt_new_simple_encoder(&encoder_config, &motor->rmt_encoder);
+    } else {
+        rmt_simple_encoder_config_t encoder_config = {
+            .callback = rmt_stepper_realtime_encode,
+            .min_chunk_size = 10
+        };
+        rmt_new_simple_encoder(&encoder_config, &motor->rmt_encoder);
+    }
+
+    rmt_enable(motor->rmt_channel);
+
+    if (control_mode == REALTIME)
+    {
+        ESP_LOGI(TAG, "Starting RMT transmission for realtime control...");
+
+        gpio_set_level(motor->pin_EN, motor->active_low ? 0 : 1);
+
+        rmt_transmit_config_t c = {
+            .flags.eot_level = 0
+        };
+        rmt_transmit(motor->rmt_channel, motor->rmt_encoder, &motor, sizeof(motor), &c);
+    }
 
     ESP_LOGI(TAG, "Motor succesfully attached!");
 }
 
+void set_control_mode(control_mode_t mode)
+{
+    control_mode = mode;
+}
+
 void detach_motor(drv8825_t* motor)
 {
-    ESP_LOGI(TAG, "Detaching motor with STEP pin %d...", motor->pinSTEP);
-    rmt_disable(motor->channelRMT);
-    rmt_del_channel(motor->channelRMT);
-    rmt_del_encoder(motor->encoderRMT);
+    ESP_LOGI(TAG, "Detaching motor with STEP pin %d...", motor->pin_STEP);
+    rmt_disable(motor->rmt_channel);
+    rmt_del_channel(motor->rmt_channel);
+    rmt_del_encoder(motor->rmt_encoder);
     ESP_LOGI(TAG, "Motor succesfully detached!");
+}
+
+void tx_buf_push(drv8825_t *motor, uint16_t pulse_time_us)
+{
+    drv8825_rt_buffer_t *buf = &motor->rt_buffer;
+
+    if (buf->count >= RT_TX_BUF_SIZE)
+    {
+        ESP_LOGW(TAG, "Cannot push to RMT TX buffer. Maximum capacity reached");
+        return;
+    }
+
+    // Equivalent to: write_idx mod BUF_SIZE (ONLY IF buf size is power of 2)
+    buf->write_idx = buf->write_idx & (RT_TX_BUF_SIZE - 1);
+    buf->tx_buffer[buf->write_idx] = pulse_time_us;
+    buf->count++;
+    buf->write_idx++;
+}
+
+bool tx_buf_pop(drv8825_t *motor, uint16_t *out)
+{
+    drv8825_rt_buffer_t *buf = &motor->rt_buffer;
+
+    if (buf->count == 0)
+    {
+        ESP_LOGW(TAG, "Cannot pop from RMT TX buffer. 0 items in buffer");
+        return false;
+    }
+
+    // Equivalent to: read_idx mod BUF_SIZE (ONLY IF buf size is power of 2)
+    buf->read_idx = buf->read_idx & (RT_TX_BUF_SIZE - 1);
+    buf->read_idx++;
+    buf->count--;
+    *out = buf->tx_buffer[buf->read_idx];
+    return true;
+}
+
+void integrate_and_update_motor_state(drv8825_t *motor, float dt_s)
+{
+    drv8825_rt_motor_state_t *rt_state = &motor->rt_state;
+
+    int32_t error = rt_state->target_step - rt_state->current_step;
+
+    if (error == 0)
+    {
+        rt_state->current_velocity = 0;
+        return;
+    }
+
+    float direction = (error > 0) ? 1.0f : -1.0f;
+
+    float vel_desired = direction * rt_state->target_velocity;
+    float max_delta_v = rt_state->acceleration * dt_s;
+    
+    // D = v^2/2a
+    float stopping_dist = (rt_state->current_velocity * rt_state->current_velocity) / (2.0f * rt_state->acceleration);
+    
+    // Start braking if at or within stopping range
+    if (fabsf(error) <= stopping_dist)
+        vel_desired = 0;
+
+    float vel_error   = vel_desired - rt_state->current_velocity;
+
+    // Clamp velocity
+    if (fabsf(vel_error) > max_delta_v)
+        vel_error = copysignf(max_delta_v, vel_error);
+    
+    rt_state->current_velocity += vel_error;
+}
+
+void fill_tx_buffer(drv8825_t* motor)
+{
+    drv8825_rt_motor_state_t *rt_state = &motor->rt_state;
+
+    while (RT_TX_BUF_SIZE - motor->rt_buffer.count > 0)
+    {
+        int32_t error = rt_state->target_step - rt_state->current_step;
+
+        if (error == 0)
+            return;
+
+        integrate_and_update_motor_state(motor, rt_state->update_interval_us / 1e6f);
+
+        float abs_speed = fabsf(rt_state->current_velocity);
+
+        if (abs_speed < 1.0f)
+            return;
+
+        uint32_t interval_us = (uint32_t)(1e6f / abs_speed);
+
+        gpio_set_level(motor->pin_DIR, rt_state->current_velocity > 0 ? CW : CCW);
+        tx_buf_push(motor, interval_us);
+
+        rt_state->current_step += rt_state->current_velocity > 0 ? 1 : -1; 
+    }
 }
 
 uint16_t prepare(drv8825_command_t *command, const char* tag)
 {
     drv8825_t *motor = command->motor;
 
-    ESP_LOGI(tag, "Movement command issued for motor with STEP pin %d", motor->pinSTEP);
+    ESP_LOGI(tag, "Movement command issued for motor with STEP pin %d", motor->pin_STEP);
     ESP_LOGI(tag, "Rotation %d degress %s", command->degrees, command->direction ? "CW" : "CCW");
     float fraction = command->degrees/360.0f;
-    uint16_t steps = (uint16_t)(fraction * motor->stepsPerRotation);
+    uint16_t steps = (uint16_t)(fraction * motor->steps_per_rotation);
 
-    gpio_set_level(motor->pinDIR, (uint8_t)command->direction);
-    gpio_set_level(motor->pinEN, motor->activeLow ? 0 : 1);
+    gpio_set_level(motor->pin_DIR, (uint8_t)command->direction);
+    gpio_set_level(motor->pin_EN, motor->active_low ? 0 : 1);
 
     vTaskDelay(pdMS_TO_TICKS(3));
 
@@ -117,12 +279,17 @@ uint16_t prepare(drv8825_command_t *command, const char* tag)
 
 void execute(drv8825_command_t *command, override_t disable)
 {
+    if (control_mode != OFFLINE) {
+        ESP_LOGE(TAG, "Attempted to used offline stepper API in realtime mode");
+        return;
+    }
+
     if (!command->moving)
         return;
 
     drv8825_t *motor = command->motor;
     uint16_t steps = prepare(command, TAG);
-    ESP_LOGI(TAG, "Executing move: [STEP pin %d] [Steps %d]", motor->pinSTEP, steps);
+    ESP_LOGI(TAG, "Executing move: [STEP pin %d] [Steps %d]", motor->pin_STEP, steps);
 
     rmt_transmit_config_t c = {
         .flags.eot_level = 0
@@ -131,8 +298,8 @@ void execute(drv8825_command_t *command, override_t disable)
         .pulse = command->pulse,
         .loop_count = steps,
     };
-    rmt_transmit(motor->channelRMT, motor->encoderRMT, &data, sizeof(data), &c);
-    rmt_tx_wait_all_done(motor->channelRMT, 10000);
+    rmt_transmit(motor->rmt_channel, motor->rmt_encoder, &data, sizeof(data), &c);
+    rmt_tx_wait_all_done(motor->rmt_channel, 10000);
 
     if (disable == TRUE || (disable == NO_OVERRIDE && command->disable))
     {
@@ -143,6 +310,11 @@ void execute(drv8825_command_t *command, override_t disable)
 
 void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable)
 {
+    if (control_mode != OFFLINE) {
+        ESP_LOGE(TAG, "Attempted to used offline stepper API in realtime mode");
+        return;
+    }
+
     if (count == 0)
         return;
     
@@ -153,7 +325,7 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
     uint8_t step_pins[count];
     for (uint8_t i = 0; i < count; i++)
     {
-        uint8_t step = commands[i].motor->pinSTEP;
+        uint8_t step = commands[i].motor->pin_STEP;
         for (uint8_t j = 0; j < i; j++)
         {
             if (step == step_pins[j])
@@ -181,7 +353,7 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
         };
         data[i] = d;
 
-        ESP_LOGI(TAG, "Command: [STEP# %d] [Steps %d]", command.motor->pinSTEP, steps);
+        ESP_LOGI(TAG, "Command: [STEP# %d] [Steps %d]", command.motor->pin_STEP, steps);
     }
 
     ESP_LOGI(TAG, "Beginning transmission");
@@ -193,12 +365,12 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
     for (uint8_t i = 0; i < count; i++)
     {
         drv8825_t *motor = commands[i].motor;
-        rmt_transmit(motor->channelRMT, motor->encoderRMT, &data[i], sizeof(rmt_stepper_loop_encoder_data_t), &c);
+        rmt_transmit(motor->rmt_channel, motor->rmt_encoder, &data[i], sizeof(rmt_stepper_loop_encoder_data_t), &c);
     }
 
     for (uint8_t i = 0; i < count; i++)
     {
-        rmt_tx_wait_all_done(commands[i].motor->channelRMT, 10000);
+        rmt_tx_wait_all_done(commands[i].motor->rmt_channel, 10000);
     }
 
     free(data);
@@ -217,5 +389,5 @@ void execute_sync(uint8_t count, drv8825_command_t *commands, override_t disable
 
 void disable_motor(drv8825_t *motor)
 {
-    gpio_set_level(motor->pinEN, motor->activeLow);
+    gpio_set_level(motor->pin_EN, motor->active_low);
 }

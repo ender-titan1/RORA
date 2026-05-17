@@ -14,13 +14,13 @@ static drv8825_command_t commands[3] = {0};
 static QueueHandle_t pc_cmd_queue;
 
 static drv8825_t shoulder_motor_nema23 = {
-    .pinSTEP = M1_STEP,
-    .pinDIR = M1_DIR,
-    .pinEN = M1_EN,
-    .stepsPerRotation = 200 * 32,
-    .activeLow = false,
-    .channelRMT = NULL,
-    .encoderRMT = NULL,
+    .pin_STEP = M1_STEP,
+    .pin_DIR = M1_DIR,
+    .pin_EN = M1_EN,
+    .steps_per_rotation = 200 * 32,
+    .active_low = false,
+    .rmt_channel = NULL,
+    .rmt_encoder = NULL,
 };
 
 static mp_joint_t shoulder = {
@@ -31,13 +31,13 @@ static mp_joint_t shoulder = {
 };
 
 static drv8825_t elbow_motor_nema17 = {
-    .pinSTEP = M2_STEP,
-    .pinDIR = M2_DIR,
-    .pinEN = M2_EN,
-    .stepsPerRotation = 200 * 32,
-    .activeLow = false,
-    .channelRMT = NULL,
-    .encoderRMT = NULL,
+    .pin_STEP = M2_STEP,
+    .pin_DIR = M2_DIR,
+    .pin_EN = M2_EN,
+    .steps_per_rotation = 200 * 32,
+    .active_low = false,
+    .rmt_channel = NULL,
+    .rmt_encoder = NULL,
 };
 
 static mp_joint_t elbow = {

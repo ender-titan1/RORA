@@ -41,7 +41,7 @@ bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
     float motor_degrees = ((float)cmd->degrees) * gear_ratio;
     uint8_t dir = (cmd->direction == CW) ? CCW : CW;
 
-    uint16_t steps = motor_degrees/360.0f * joint->motor->stepsPerRotation;
+    uint16_t steps = motor_degrees/360.0f * joint->motor->steps_per_rotation;
 
     if (cmd->profile == NULL)
     {
@@ -73,7 +73,7 @@ bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
 
     if (cmd->duration_s != cmd->profile->cfg->duration_s)
     {
-        ESP_LOGE(TAG, "Failed to create DRV8825 command! (STEP: %s)", cmd->joint->motor->pinSTEP);
+        ESP_LOGE(TAG, "Failed to create DRV8825 command! (STEP: %s)", cmd->joint->motor->pin_STEP);
         ESP_LOGE(TAG, "Duration of command != duration of movement profile!");
         ESP_LOGE(TAG, "Aborting movement profile");
 
@@ -100,7 +100,7 @@ bool create_drv8825_command(mp_joint_command_t *cmd, drv8825_command_t *out_cmd)
 
     if (total_area == 0.0)
     {
-        ESP_LOGE(TAG, "Failed to create DRV8825 command! (STEP: %s)", cmd->joint->motor->pinSTEP);
+        ESP_LOGE(TAG, "Failed to create DRV8825 command! (STEP: %s)", cmd->joint->motor->pin_STEP);
         ESP_LOGE(TAG, "Movement curve area == 0");
         ESP_LOGE(TAG, "Aborting movement profile");
 

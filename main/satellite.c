@@ -9,13 +9,13 @@ static uint8_t core_mac[6] = { 0xAC, 0xA7, 0x04, 0x2C, 0x59, 0x28 };
 static controller_specific_buffers_t *buffers;
 
 static drv8825_t base_motor_nema17 = {
-    .pinSTEP = GPIO_NUM_3,
-    .pinDIR = GPIO_NUM_2,
-    .pinEN = GPIO_NUM_4,
-    .stepsPerRotation = 200 * 32,
-    .activeLow = true,
-    .channelRMT = NULL,
-    .encoderRMT = NULL,
+    .pin_STEP = GPIO_NUM_3,
+    .pin_DIR = GPIO_NUM_2,
+    .pin_EN = GPIO_NUM_4,
+    .steps_per_rotation = 200 * 32,
+    .active_low = true,
+    .rmt_channel = NULL,
+    .rmt_encoder = NULL,
 };
 static mp_joint_t base = {
     .motor = &base_motor_nema17,
