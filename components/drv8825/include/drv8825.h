@@ -38,10 +38,9 @@ typedef struct {
     float current_velocity;
     float target_velocity;
 
-    float max_velocity;
     float acceleration;
 
-    float update_interval_us;
+    float dt_s;
 } drv8825_rt_motor_state_t;
 
 typedef struct {

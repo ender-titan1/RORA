@@ -29,20 +29,24 @@ void init_control_system(control_system_t *controller, uint8_t* peer_mac, contro
     {
         // TODO: Replace these placeholder values
 #if CONFIG_DEVICE_ROLE_CORE
-        controller->used_system.motion_planner = init_motion_planner(16, 8, joints_len);
-        memcpy(controller->used_system.motion_planner->satellite_addrs[0], peer_mac, sizeof(uint8_t) * MAC_ADDR_LEN);
-        joint_t* joint_arr = controller->used_system.motion_planner->core_buffers->joints;
+        controller->backend.motion_planner = init_motion_planner(16, 8, joints_len);
+        memcpy(controller->backend.motion_planner->satellite_addrs[0], peer_mac, sizeof(uint8_t) * MAC_ADDR_LEN);
+        joint_t* joint_arr = controller->backend.motion_planner->core_buffers->joints;
 #elif CONFIG_DEVICE_ROLE_SAT
-        controller->used_system.motion_planner_bufs = malloc(sizeof(controller_specific_buffers_t));
-        init_buffers(controller->used_system.motion_planner_bufs, 16, 8, joints_len);
-        joint_t* joint_arr = controller->used_system.motion_planner_bufs->joints;
+        controller->backend.motion_planner_bufs = malloc(sizeof(controller_specific_buffers_t));
+        init_buffers(controller->backend.motion_planner_bufs, 16, 8, joints_len);
+        joint_t* joint_arr = controller->backend.motion_planner_bufs->joints;
 #endif
         for (size_t i = 0; i < joints_len; i++)
             joint_arr[i] = joints[i];
     }
     else
     {
+        controller->backend.realtime_controller = malloc(sizeof(rt_controller_t));
         controller->integrator_mode = integrator_mode;
+        init_realtime(controller->backend.realtime_controller);
+        for (size_t i = 0; i < joints_len; i++)
+            controller->backend.realtime_controller->joints_arr[i] = joints[i];
     }
 
     // Attach motors 
@@ -54,4 +58,27 @@ void init_control_system(control_system_t *controller, uint8_t* peer_mac, contro
             disable_motor(joints[i].motor);
     }
     
+}
+
+void reset_control_system(control_system_t *controller)
+{
+    // Detach all motors and delete all malloc'ed resources
+    if (controller->mode == OFFLINE)
+    {
+#if CONFIG_DEVICE_ROLE_CORE
+        joint_t* joint_arr = controller->backend.motion_planner->core_buffers->joints;
+        size_t len = controller->backend.motion_planner->core_buffers->joint_buf_size;
+#elif CONFIG_DEVICE_ROLE_SAT
+        joint_t* joint_arr = controller->backend.motion_planner_bufs->joints;
+        size_t len = controller->backend.motion_planner->core_buffers->joint_buf_size;
+#endif
+        for (size_t i = 0; i < len; i++)
+            detach_motor(joint_arr[i].motor);
+
+#if CONFIG_DEVICE_ROLE_CORE
+        delete_motion_planner(controller->backend.motion_planner);
+#elif CONFIG_DEVICE_ROLE_SAT
+        delete_local_buffers(controller->backend.motion_planner_bufs);
+#endif
+    }
 }

@@ -259,7 +259,7 @@ void fill_tx_buffer(drv8825_t* motor, integrator_mode_t mode)
         if (error == 0)
             return;
 
-        integrate_and_update_motor_state(motor, mode, rt_state->update_interval_us / 1e6f);
+        integrate_and_update_motor_state(motor, mode, rt_state->dt_s);
 
         float abs_speed = fabsf(rt_state->current_velocity);
 

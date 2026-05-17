@@ -9,10 +9,10 @@
 
 static const char *TAG = "core_main";
 static uint8_t sat_mac[6] = { 0x80, 0xF1, 0xB2, 0x63, 0x6E, 0x90 };
-static mp_movement_curve_t curves[3] = {0};
-static drv8825_command_t commands[3] = {0};
+//static mp_movement_curve_t curves[3] = {0};
+//static drv8825_command_t commands[3] = {0};
 
-static QueueHandle_t pc_cmd_queue;
+//static QueueHandle_t pc_cmd_queue;
 
 static drv8825_t shoulder_motor_nema23 = {
     .pin_STEP = M1_STEP,
@@ -192,7 +192,7 @@ static void pc_command_task(void *arg)
 
 void core_main()
 {
-    pc_cmd_queue = xQueueCreate(8, sizeof(pc_command_t));
+    //pc_cmd_queue = xQueueCreate(8, sizeof(pc_command_t));
     //xTaskCreate(pc_command_task, "pc_command", 4096, NULL, 4, NULL);
     //xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 
@@ -204,14 +204,14 @@ void core_main()
         shoulder,
         elbow
     };
-    init_control_system(&controller, sat_mac, OFFLINE, 0, joints, 2); 
+    init_control_system(&controller, sat_mac, REALTIME, POSITION_DRIVEN, joints, 2); 
 
-    demo_motion(controller.used_system.motion_planner);
-    execute_motion_globally(controller.used_system.motion_planner);
+    demo_motion(controller.backend.motion_planner);
+    execute_motion_globally(controller.backend.motion_planner);
 
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        execute_motion_globally(controller.used_system.motion_planner);
+        execute_motion_globally(controller.backend.motion_planner);
     }
 
     return;

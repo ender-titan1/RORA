@@ -44,7 +44,7 @@ static void sat_cmd_curve(data_frame_t *cmd, uint8_t len)
     mp_curve_command_payload_t payload;
     memcpy(&payload, cmd->payload, sizeof(mp_curve_command_payload_t));
 
-    create_eased_movement_curve(&payload.cfg, &controller->used_system.motion_planner_bufs->curves[payload.curve_id]);
+    create_eased_movement_curve(&payload.cfg, &controller->backend.motion_planner_bufs->curves[payload.curve_id]);
 }
 
 // THIS CODE ALSO LEAKS - and this one I will have to fix, but not now
@@ -68,18 +68,18 @@ static void sat_cmd_compute(data_frame_t *cmd, uint8_t len)
     memcpy(&payload, cmd->payload, sizeof(mp_joint_command_payload_t));
     
     mp_joint_command_t mp_cmd = {
-        .joint = &controller->used_system.motion_planner_bufs->joints[payload.joint_id],
-        .profile = &controller->used_system.motion_planner_bufs->curves[payload.curve_id],
+        .joint = &controller->backend.motion_planner_bufs->joints[payload.joint_id],
+        .profile = &controller->backend.motion_planner_bufs->curves[payload.curve_id],
         .degrees = payload.degrees,
         .direction = payload.dir,
     };
 
     mp_cmd.duration_s = mp_cmd.profile->cfg->duration_s;
 
-    create_drv8825_command(&mp_cmd, &controller->used_system.motion_planner_bufs->commands[payload.command_id]);
+    create_drv8825_command(&mp_cmd, &controller->backend.motion_planner_bufs->commands[payload.command_id]);
 
     // Kinda stupid but it works
-    controller->used_system.motion_planner_bufs->local_commands[payload.command_id] = payload.command_id + 1;
+    controller->backend.motion_planner_bufs->local_commands[payload.command_id] = payload.command_id + 1;
 }
 
 static void sat_cmd_exec(data_frame_t *cmd, uint8_t len)
@@ -104,7 +104,7 @@ static void sat_cmd_exec(data_frame_t *cmd, uint8_t len)
     // Execute the motion, only executing the local commands
     // The `next` value in the recieved motion is a pointer and is completely useless,
     // but I see no point making a separate struct just for transmission, so we will just ignore it
-    execute_local_commands_in_motion(&motion, controller->used_system.motion_planner_bufs);
+    execute_local_commands_in_motion(&motion, controller->backend.motion_planner_bufs);
 
     data_frame_t ack = {
         .command = ACK,
@@ -124,6 +124,17 @@ static void sat_cmd_config(data_frame_t *cmd, uint8_t len)
     if (controller == NULL)
     {
         controller = malloc(sizeof(control_system_t));
+    }
+    else 
+    {
+        // If the config command is not changing the controller mode, update the integrator mode but don't bother with a full reset
+        if (cfg.control_mode != controller->mode)
+        {
+            controller->integrator_mode = cfg.integrator_mode;
+            return;
+        }
+
+        reset_control_system(controller);
     }
 
     joint_t joints[1] = {
