@@ -25,6 +25,6 @@ void init_realtime(rt_controller_t *rt)
 
 void rt_demo(rt_controller_t *rt)
 {
-    rt->joints_arr[0].motor->rt_state.target_velocity = 4000;
+    rt->joints_arr[0].motor->rt_state.target_step = 2 * 200 * 32;
     rt->joints_arr[0].motor->rt_state.moving = true;
 }

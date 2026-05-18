@@ -213,42 +213,33 @@ void integrate_and_update_motor_state(drv8825_t *motor, integrator_mode_t mode, 
 {
     drv8825_rt_motor_state_t *rt_state = &motor->rt_state;
 
-    int32_t error = rt_state->target_step - rt_state->current_step;
+    int32_t distance = rt_state->target_step - rt_state->current_step;
 
-    if (error == 0 && mode != VELOCITY_DRIVEN)
+    if (distance == 0 && mode == POSITION_DRIVEN)
     {
         rt_state->current_velocity = 0;
         rt_state->moving = false;
         return;
     }
 
-    float direction = (error > 0) ? 1.0f : -1.0f;
+    float direction = (distance > 0) ? 1.0f : -1.0f;
 
-    // Initial start velocity
-    if (fabsf(rt_state->current_velocity) < 1.0f && mode == VELOCITY_DRIVEN)
-    {
-        rt_state->current_velocity = copysignf(rt_state->min_start_vel, direction);
-    }
-
-    float vel_desired;
+    float vel_desired = rt_state->target_velocity; // Signed
     float max_delta_v = rt_state->acceleration * dt_s;
 
     if (mode == POSITION_DRIVEN)
     {
-        vel_desired = direction * rt_state->target_velocity;
-
-        // D = v^2/2a
-        float stopping_dist = (rt_state->current_velocity * rt_state->current_velocity) / (2.0f * rt_state->acceleration);
-        
-        // Start braking if at or within stopping range
-        if ((float)abs(error) <= stopping_dist)
-            vel_desired = 0;
-    } 
-    else 
-    {
-        vel_desired = rt_state->target_velocity;
+        float vel_stop = sqrt(2 * rt_state->acceleration * (float)abs(distance));
+        float vel_target = rt_state->max_vel < vel_stop ? rt_state->max_vel : vel_stop;
+        vel_desired = direction * vel_target;
     }
 
+    // Set initial start velocity
+    if (fabsf(rt_state->current_velocity) < 1.0f)
+    {
+        rt_state->current_velocity = copysignf(rt_state->min_start_vel, direction);
+    }
+    
     float vel_error = vel_desired - rt_state->current_velocity;
 
     // Clamp velocity

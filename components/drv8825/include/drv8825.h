@@ -21,6 +21,13 @@ typedef enum {
 } integrator_mode_t;
 
 typedef enum {
+    PHASE_STOPPED,
+    PHASE_ACCEL,
+    PHASE_CRUISE,
+    PHASE_DECEL,
+} integrator_phase_t;
+
+typedef enum {
     FALSE = 0x00,
     TRUE = 0x01,
     NO_OVERRIDE = 0xFF,
@@ -39,8 +46,10 @@ typedef struct {
     float target_velocity;
 
     float acceleration;
-
+    float max_vel;
     float min_start_vel;
+
+    integrator_phase_t current_phase;
     bool moving;
 } drv8825_rt_motor_state_t;
 

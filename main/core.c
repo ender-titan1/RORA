@@ -40,8 +40,9 @@ static drv8825_t elbow_motor_nema17 = {
     .rmt_channel = NULL,
     .rmt_encoder = NULL,
     .rt_state = {
-        .acceleration = 5000,
-        .min_start_vel = 200,
+        .acceleration = 6000,
+        .min_start_vel = 300,
+        .max_vel = 13000,
     }
 };
 
@@ -207,7 +208,7 @@ void core_main()
     joint_t joints[1] = {
         elbow
     };
-    init_control_system(&controller, sat_mac, REALTIME, VELOCITY_DRIVEN, joints, 1); 
+    init_control_system(&controller, sat_mac, REALTIME, POSITION_DRIVEN, joints, 1); 
 
     rt_demo(controller.backend.realtime_controller);
 
