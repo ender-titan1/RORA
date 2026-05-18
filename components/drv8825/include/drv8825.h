@@ -40,7 +40,8 @@ typedef struct {
 
     float acceleration;
 
-    float dt_s;
+    float min_start_vel;
+    bool moving;
 } drv8825_rt_motor_state_t;
 
 typedef struct {
@@ -49,7 +50,7 @@ typedef struct {
     volatile uint16_t read_idx;
     volatile uint16_t write_idx;
 
-    volatile uint16_t count;
+    volatile size_t count;
 } drv8825_rt_buffer_t;
 
 typedef struct {

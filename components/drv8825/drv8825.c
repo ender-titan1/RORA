@@ -34,13 +34,14 @@ static size_t rmt_stepper_realtime_encode(const void *data, size_t data_size, si
         }
 
         uint16_t pulse_time_us = 0;
-        tx_buf_pop(motor, &pulse_time_us);
-        symbols[written++] = (rmt_symbol_word_t){
-            .level0 = 0,
-            .duration0 = RT_RMT_SYMBOL_LOW_DURATION_US,
-            .level1 = 1,
-            .duration1 = pulse_time_us - RT_RMT_SYMBOL_LOW_DURATION_US
-        };
+        if (tx_buf_pop(motor, &pulse_time_us)) {
+            symbols[written++] = (rmt_symbol_word_t){
+                .level0 = 0,
+                .duration0 = RT_RMT_SYMBOL_LOW_DURATION_US,
+                .level1 = 1,
+                .duration1 = pulse_time_us - RT_RMT_SYMBOL_LOW_DURATION_US
+            };
+        }
     }
 
     return written;
@@ -127,6 +128,14 @@ void attach_motor(drv8825_t* motor)
         };
         rmt_new_simple_encoder(&encoder_config, &motor->rmt_encoder);
     } else {
+
+        motor->rt_buffer = (drv8825_rt_buffer_t){
+            .count = 0,
+            .read_idx = 0,
+            .write_idx = 0,
+            .tx_buffer = {0}
+        };
+
         rmt_simple_encoder_config_t encoder_config = {
             .callback = rmt_stepper_realtime_encode,
             .min_chunk_size = 10
@@ -145,7 +154,7 @@ void attach_motor(drv8825_t* motor)
         rmt_transmit_config_t c = {
             .flags.eot_level = 0
         };
-        rmt_transmit(motor->rmt_channel, motor->rmt_encoder, &motor, sizeof(motor), &c);
+        rmt_transmit(motor->rmt_channel, motor->rmt_encoder, motor, sizeof(*motor), &c);
     }
 
     ESP_LOGI(TAG, "Motor succesfully attached!");
@@ -174,7 +183,7 @@ void tx_buf_push(drv8825_t *motor, uint16_t pulse_time_us)
         ESP_LOGW(TAG, "Cannot push to RMT TX buffer. Maximum capacity reached");
         return;
     }
-
+    
     // Equivalent to: write_idx mod BUF_SIZE (ONLY IF buf size is power of 2)
     buf->write_idx = buf->write_idx & (RT_TX_BUF_SIZE - 1);
     buf->tx_buffer[buf->write_idx] = pulse_time_us;
@@ -185,18 +194,18 @@ void tx_buf_push(drv8825_t *motor, uint16_t pulse_time_us)
 bool tx_buf_pop(drv8825_t *motor, uint16_t *out)
 {
     drv8825_rt_buffer_t *buf = &motor->rt_buffer;
-
+    
     if (buf->count == 0)
     {
         ESP_LOGW(TAG, "Cannot pop from RMT TX buffer. 0 items in buffer");
         return false;
     }
-
+    
     // Equivalent to: read_idx mod BUF_SIZE (ONLY IF buf size is power of 2)
     buf->read_idx = buf->read_idx & (RT_TX_BUF_SIZE - 1);
+    *out = buf->tx_buffer[buf->read_idx];
     buf->read_idx++;
     buf->count--;
-    *out = buf->tx_buffer[buf->read_idx];
     return true;
 }
 
@@ -206,13 +215,20 @@ void integrate_and_update_motor_state(drv8825_t *motor, integrator_mode_t mode, 
 
     int32_t error = rt_state->target_step - rt_state->current_step;
 
-    if (error == 0)
+    if (error == 0 && mode != VELOCITY_DRIVEN)
     {
         rt_state->current_velocity = 0;
+        rt_state->moving = false;
         return;
     }
 
     float direction = (error > 0) ? 1.0f : -1.0f;
+
+    // Initial start velocity
+    if (fabsf(rt_state->current_velocity) < 1.0f && mode == VELOCITY_DRIVEN)
+    {
+        rt_state->current_velocity = copysignf(rt_state->min_start_vel, direction);
+    }
 
     float vel_desired;
     float max_delta_v = rt_state->acceleration * dt_s;
@@ -225,7 +241,7 @@ void integrate_and_update_motor_state(drv8825_t *motor, integrator_mode_t mode, 
         float stopping_dist = (rt_state->current_velocity * rt_state->current_velocity) / (2.0f * rt_state->acceleration);
         
         // Start braking if at or within stopping range
-        if (fabsf(error) <= stopping_dist)
+        if ((float)abs(error) <= stopping_dist)
             vel_desired = 0;
     } 
     else 
@@ -233,7 +249,7 @@ void integrate_and_update_motor_state(drv8825_t *motor, integrator_mode_t mode, 
         vel_desired = rt_state->target_velocity;
     }
 
-    float vel_error   = vel_desired - rt_state->current_velocity;
+    float vel_error = vel_desired - rt_state->current_velocity;
 
     // Clamp velocity
     if (fabsf(vel_error) > max_delta_v)
@@ -252,14 +268,23 @@ void fill_tx_buffer(drv8825_t* motor, integrator_mode_t mode)
 
     drv8825_rt_motor_state_t *rt_state = &motor->rt_state;
 
-    while (RT_TX_BUF_SIZE - motor->rt_buffer.count > 0)
+    if (!rt_state->moving)
+        return;
+
+    // There's probably some stupidity here with the units, but it works
+    float dt_s = (uint32_t)(1e6f / rt_state->min_start_vel) * 1e-6f;
+
+    while (motor->rt_buffer.count < RT_TX_BUF_SIZE)
     {
         int32_t error = rt_state->target_step - rt_state->current_step;
 
-        if (error == 0)
+        if (error == 0 && mode != VELOCITY_DRIVEN)
+        {
+            rt_state->moving = false;
             return;
+        }
 
-        integrate_and_update_motor_state(motor, mode, rt_state->dt_s);
+        integrate_and_update_motor_state(motor, mode, dt_s);
 
         float abs_speed = fabsf(rt_state->current_velocity);
 
@@ -267,6 +292,8 @@ void fill_tx_buffer(drv8825_t* motor, integrator_mode_t mode)
             return;
 
         uint32_t interval_us = (uint32_t)(1e6f / abs_speed);
+
+        dt_s = interval_us * 1e-6f;
 
         gpio_set_level(motor->pin_DIR, rt_state->current_velocity > 0 ? CW : CCW);
         tx_buf_push(motor, interval_us);

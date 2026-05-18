@@ -2,6 +2,9 @@
 
 #include "common.h"
 
+#define RT_UPDATE_LOOP_HZ 500
+#define RT_UPDATE_PERIOD_MS (1000 / RT_UPDATE_LOOP_HZ)
+
 typedef struct {
     integrator_mode_t integrator_mode;
 

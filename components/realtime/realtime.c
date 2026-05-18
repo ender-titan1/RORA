@@ -1,9 +1,6 @@
 #include "realtime.h"
 #include "freertos/FreeRTOS.h"
 
-#define UPDATE_LOOP_HZ 500
-#define UPDATE_PERIOD_MS (1000 / UPDATE_LOOP_HZ)
-
 static void motor_update(void *arg)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
@@ -12,7 +9,7 @@ static void motor_update(void *arg)
 
     while (true)
     {
-        xTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(UPDATE_PERIOD_MS));
+        xTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(RT_UPDATE_PERIOD_MS));
 
         for (size_t i = 0; i < rt->joints_len; i++)
         {
@@ -28,7 +25,6 @@ void init_realtime(rt_controller_t *rt)
 
 void rt_demo(rt_controller_t *rt)
 {
-    rt->joints_arr[1].motor->rt_state.acceleration = 1000;
-    rt->joints_arr[1].motor->rt_state.dt_s = UPDATE_PERIOD_MS / 1000;
-    rt->joints_arr[1].motor->rt_state.target_step = 50 * 32; // 90 deg turn
+    rt->joints_arr[0].motor->rt_state.target_velocity = 4000;
+    rt->joints_arr[0].motor->rt_state.moving = true;
 }

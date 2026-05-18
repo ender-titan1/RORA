@@ -39,6 +39,10 @@ static drv8825_t elbow_motor_nema17 = {
     .active_low = false,
     .rmt_channel = NULL,
     .rmt_encoder = NULL,
+    .rt_state = {
+        .acceleration = 5000,
+        .min_start_vel = 200,
+    }
 };
 
 static joint_t elbow = {
@@ -197,22 +201,23 @@ void core_main()
     //xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 
     wifi_init();
-    coordinator_connect(sat_mac);
+    //coordinator_connect(sat_mac);
 
     control_system_t controller = {0};
-    joint_t joints[2] = {
-        shoulder,
+    joint_t joints[1] = {
         elbow
     };
-    init_control_system(&controller, sat_mac, REALTIME, POSITION_DRIVEN, joints, 2); 
+    init_control_system(&controller, sat_mac, REALTIME, VELOCITY_DRIVEN, joints, 1); 
 
-    demo_motion(controller.backend.motion_planner);
-    execute_motion_globally(controller.backend.motion_planner);
+    rt_demo(controller.backend.realtime_controller);
 
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        execute_motion_globally(controller.backend.motion_planner);
-    }
+    //demo_motion(controller.backend.motion_planner);
+    //execute_motion_globally(controller.backend.motion_planner);
+
+    //while (true) {
+    //    vTaskDelay(pdMS_TO_TICKS(1000));
+    //    execute_motion_globally(controller.backend.motion_planner);
+    //}
 
     return;
 }

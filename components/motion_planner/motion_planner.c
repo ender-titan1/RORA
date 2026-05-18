@@ -16,6 +16,8 @@
 #define J_SHOULDER 0
 #define J_ELBOW 1
 
+#define MAX(a, b) (a > b ? a : b)
+
 static const char* TAG = "motion_planner";
 
 int compare_remainders_desc_cb(const void *a, const void *b)

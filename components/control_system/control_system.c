@@ -1,6 +1,7 @@
 #include "control_system.h"
 #include "coordinator_common.h"
 #include "motion_planner.h"
+#include <string.h>
 
 #define TAG "control_system"
 
@@ -11,17 +12,17 @@ void init_control_system(control_system_t *controller, uint8_t* peer_mac, contro
 
 #if CONFIG_DEVICE_ROLE_CORE
     // Configure the satellite
-    data_frame_t frame = {
-        .command = CMD_CONFIGURE,
-    };
-    configure_command_payload_t payload = {
-        .control_mode = control_mode,
-        .integrator_mode = integrator_mode
-    };
-    memcpy(frame.payload, &payload, sizeof(mp_curve_command_payload_t));
-    transmit_frame(peer_mac, &frame);
-    if (!await_response())
-        ESP_LOGE(TAG, "Failed to recieve ACK on curve command!");
+    //data_frame_t frame = {
+    //    .command = CMD_CONFIGURE,
+    //};
+    //configure_command_payload_t payload = {
+    //    .control_mode = control_mode,
+    //    .integrator_mode = integrator_mode
+    //};
+    //memcpy(frame.payload, &payload, sizeof(configure_command_payload_t));
+    //transmit_frame(peer_mac, &frame);
+    //if (!await_response())
+    //    ESP_LOGE(TAG, "Failed to recieve ACK on configure command!");
 #endif
 
     // Initialize the device in either core or
@@ -44,7 +45,9 @@ void init_control_system(control_system_t *controller, uint8_t* peer_mac, contro
     {
         controller->backend.realtime_controller = malloc(sizeof(rt_controller_t));
         controller->integrator_mode = integrator_mode;
-        init_realtime(controller->backend.realtime_controller);
+        controller->backend.realtime_controller->integrator_mode = integrator_mode;
+        controller->backend.realtime_controller->joints_len = joints_len;
+        
         for (size_t i = 0; i < joints_len; i++)
             controller->backend.realtime_controller->joints_arr[i] = joints[i];
     }
@@ -57,7 +60,11 @@ void init_control_system(control_system_t *controller, uint8_t* peer_mac, contro
         if (control_mode == OFFLINE)
             disable_motor(joints[i].motor);
     }
-    
+
+    if (control_mode == REALTIME)
+    {
+        init_realtime(controller->backend.realtime_controller);
+    }
 }
 
 void reset_control_system(control_system_t *controller)
